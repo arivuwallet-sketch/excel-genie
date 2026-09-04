@@ -1,0 +1,171 @@
+import Papa from "papaparse";
+import * as XLSX from "xlsx";
+
+export type Sheet = { name: string; rows: string[][] };
+
+export const UNSUPPORTED_EXT = [
+  "xlc",
+  "wk1",
+  "wk2",
+  "wk3",
+  "wk4",
+  "wks",
+  "fmt",
+  "fm3",
+  "wq1",
+  "wb1",
+  "wb3",
+];
+
+export const SUPPORTED_EXT = [
+  "xlsx",
+  "xlsm",
+  "xlsb",
+  "xltx",
+  "xltm",
+  "xls",
+  "xlt",
+  "xml",
+  "xlam",
+  "xla",
+  "xlw",
+  "xlr",
+  "prn",
+  "txt",
+  "csv",
+  "dif",
+  "slk",
+  "dbf",
+  "ods",
+  "pdf",
+  "xps",
+];
+
+export const ACCEPT_ATTR = [...SUPPORTED_EXT, ...UNSUPPORTED_EXT].map((e) => `.${e}`).join(",");
+
+export function extOf(name: string) {
+  return name.split(".").pop()?.toLowerCase() ?? "";
+}
+
+function normalize(aoa: unknown[][]): string[][] {
+  const width = aoa.reduce<number>((max, row) => Math.max(max, row?.length ?? 0), 0);
+  return aoa.map((row) =>
+    Array.from({ length: Math.max(width, 1) }, (_, i) => {
+      const v = row?.[i];
+      return v === null || v === undefined ? "" : String(v);
+    }),
+  );
+}
+
+export function workbookToSheets(wb: XLSX.WorkBook): Sheet[] {
+  return wb.SheetNames.map((name) => {
+    const ws = wb.Sheets[name];
+    if (!ws) return { name, rows: [] as string[][] };
+    const aoa = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: false, defval: "" });
+    return { name, rows: normalize(aoa) };
+  }).filter((s) => s.rows.length > 0);
+}
+
+export async function parseFile(file: File): Promise<Sheet[]> {
+  const ext = extOf(file.name);
+
+  if (UNSUPPORTED_EXT.includes(ext)) {
+    throw new Error(
+      `.${ext} is a legacy format Excel no longer opens. Please convert it to .xlsx or .csv first, then re-upload.`,
+    );
+  }
+
+  if (ext === "pdf" || ext === "xps") {
+    const text = await extractPdfText(file);
+    return [{ name: file.name.slice(0, 28), rows: textToRows(text) }];
+  }
+
+  if (ext === "csv" || ext === "txt" || ext === "prn") {
+    const text = await file.text();
+    return [{ name: file.name.replace(/\.[^.]+$/, "").slice(0, 28) || "Sheet1", rows: parseDelimited(text) }];
+  }
+
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: "array", cellFormula: true, cellStyles: true });
+  const sheets = workbookToSheets(wb);
+  if (sheets.length === 0) throw new Error("No readable data found in this file.");
+  return sheets;
+}
+
+export function parseDelimited(text: string): string[][] {
+  const parsed = Papa.parse<string[]>(text.trim(), { skipEmptyLines: true });
+  return normalize(parsed.data as unknown[][]);
+}
+
+function textToRows(text: string): string[][] {
+  return normalize(text.split(/\r?\n/).map((line) => line.split(/\s{2,}|\t/)));
+}
+
+async function extractPdfText(file: File): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  // Lightweight text extraction: pull readable ASCII runs out of the document stream.
+  let raw = "";
+  for (let i = 0; i < bytes.length; i++) {
+    const c = bytes[i] ?? 0;
+    raw += c >= 32 && c < 127 ? String.fromCharCode(c) : "\n";
+  }
+  const chunks = raw.match(/\(([^()]{2,})\)/g) ?? [];
+  const text = chunks.map((c) => c.slice(1, -1)).join("\n");
+  if (!text.trim()) {
+    throw new Error(
+      "Couldn't extract text from this document. Try exporting it to .xlsx or .csv, or paste the content into the chat.",
+    );
+  }
+  return text;
+}
+
+/** Parse clipboard payloads: HTML tables, tab-delimited text, RTF or plain text. */
+export function parseClipboard(data: DataTransfer): Sheet[] | null {
+  const html = data.getData("text/html");
+  if (html && /<t[dr]\b/i.test(html)) {
+    const wb = XLSX.read(html, { type: "string" });
+    const sheets = workbookToSheets(wb);
+    if (sheets.length) return sheets.map((s, i) => ({ ...s, name: i === 0 ? "Pasted" : s.name }));
+  }
+  const rtf = data.getData("text/rtf");
+  const plain = data.getData("text/plain") || (rtf ? stripRtf(rtf) : "");
+  if (plain.trim()) return [{ name: "Pasted", rows: parseDelimited(plain) }];
+  return null;
+}
+
+function stripRtf(rtf: string) {
+  return rtf
+    .replace(/\\par[d]?/g, "\n")
+    .replace(/\{\\\*?[^{}]*\}/g, "")
+    .replace(/\\[a-z]+-?\d* ?/gi, "")
+    .replace(/[{}]/g, "")
+    .trim();
+}
+
+export function sheetsToWorkbook(sheets: Sheet[]): XLSX.WorkBook {
+  const wb = XLSX.utils.book_new();
+  sheets.forEach((sheet, index) => {
+    const ws = XLSX.utils.aoa_to_sheet(
+      sheet.rows.map((row) => row.map((cell) => (cell.startsWith("=") ? { f: cell.slice(1) } : cell))),
+    );
+    const widths = (sheet.rows[0] ?? []).map((_, c) => ({
+      wch: Math.min(
+        40,
+        Math.max(10, ...sheet.rows.slice(0, 200).map((r) => (r[c] ?? "").length + 2)),
+      ),
+    }));
+    ws["!cols"] = widths;
+    XLSX.utils.book_append_sheet(wb, ws, (sheet.name || `Sheet${index + 1}`).slice(0, 31));
+  });
+  return wb;
+}
+
+export function downloadWorkbook(sheets: Sheet[], format: "xlsx" | "csv", filename = "analysis") {
+  const wb = sheetsToWorkbook(sheets);
+  XLSX.writeFile(wb, `${filename}.${format}`, { bookType: format, compression: true });
+}
+
+export const emptySheet = (name = "Sheet1"): Sheet => ({
+  name,
+  rows: Array.from({ length: 20 }, () => Array.from({ length: 8 }, () => "")),
+});
