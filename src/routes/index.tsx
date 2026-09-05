@@ -1,11 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Download, FileSpreadsheet, Plus, Upload, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Download, FileSpreadsheet, LayoutTemplate, Plus, Upload, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { ChatPanel, type ChatMessage } from "@/components/excel/ChatPanel";
+import { ModelControls, findAssumptions, type Assumption } from "@/components/excel/ModelControls";
 import { SheetGrid } from "@/components/excel/SheetGrid";
+import { TemplateHub } from "@/components/excel/TemplateHub";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +16,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { downloadStyledWorkbook } from "@/lib/excel-export";
 import { runExcelAgent } from "@/lib/excel.functions";
 import {
   ACCEPT_ATTR,
@@ -23,6 +26,7 @@ import {
   parseFile,
   type Sheet,
 } from "@/lib/spreadsheet";
+import type { FinancialTemplate } from "@/lib/templates";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
