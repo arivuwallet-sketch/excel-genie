@@ -61,8 +61,14 @@ function Index() {
   const [vba, setVba] = useState("");
   const [dragging, setDragging] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [hubOpen, setHubOpen] = useState(false);
+  const [scenario, setScenario] = useState("Base");
+  const [depreciation, setDepreciation] = useState("Straight-line");
+  const [highlightFormulas, setHighlightFormulas] = useState(true);
   const fileRef = useRef<HTMLInputElement>(null);
   const runAgent = useServerFn(runExcelAgent);
+
+  const assumptions = useMemo(() => findAssumptions(sheets), [sheets]);
 
   const activeSheet = sheets[Math.min(activeIndex, sheets.length - 1)] ?? emptySheet();
 
