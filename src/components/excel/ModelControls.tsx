@@ -109,7 +109,7 @@ export function ModelControls({
       </div>
 
       <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
-        <Label className="text-xs">Show live formula text in grid</Label>
+        <Label className="text-xs">Highlight formula cells</Label>
         <Switch checked={liveFormulas} onCheckedChange={onLiveFormulas} />
       </div>
 
