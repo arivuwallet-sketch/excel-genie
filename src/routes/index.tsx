@@ -258,6 +258,10 @@ function Index() {
           onChange={(e) => e.target.files && void handleFiles(e.target.files)}
         />
 
+        <Button size="sm" variant="outline" onClick={() => setHubOpen(true)}>
+          <LayoutTemplate className="size-4" /> Templates
+        </Button>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button size="sm">
@@ -265,8 +269,11 @@ function Index() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => void exportStyled()}>
+              Download styled .xlsx (model colours)
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => downloadWorkbook(sheets, "xlsx", "sheetsmith")}>
-              Download .xlsx
+              Download plain .xlsx
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => downloadWorkbook([activeSheet], "csv", activeSheet.name)}>
               Download .csv (active sheet)
