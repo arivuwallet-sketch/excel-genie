@@ -1,11 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Download, FileSpreadsheet, Plus, Upload, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Download, FileSpreadsheet, LayoutTemplate, Plus, Upload, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { ChatPanel, type ChatMessage } from "@/components/excel/ChatPanel";
+import { ModelControls, findAssumptions, type Assumption } from "@/components/excel/ModelControls";
 import { SheetGrid } from "@/components/excel/SheetGrid";
+import { TemplateHub } from "@/components/excel/TemplateHub";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +16,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { downloadStyledWorkbook } from "@/lib/excel-export";
 import { runExcelAgent } from "@/lib/excel.functions";
 import {
   ACCEPT_ATTR,
@@ -23,6 +26,7 @@ import {
   parseFile,
   type Sheet,
 } from "@/lib/spreadsheet";
+import type { FinancialTemplate } from "@/lib/templates";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
@@ -57,8 +61,14 @@ function Index() {
   const [vba, setVba] = useState("");
   const [dragging, setDragging] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [hubOpen, setHubOpen] = useState(false);
+  const [scenario, setScenario] = useState("Base");
+  const [depreciation, setDepreciation] = useState("Straight-line");
+  const [highlightFormulas, setHighlightFormulas] = useState(true);
   const fileRef = useRef<HTMLInputElement>(null);
   const runAgent = useServerFn(runExcelAgent);
+
+  const assumptions = useMemo(() => findAssumptions(sheets), [sheets]);
 
   const activeSheet = sheets[Math.min(activeIndex, sheets.length - 1)] ?? emptySheet();
 
@@ -166,6 +176,56 @@ function Index() {
     setActiveIndex(0);
   };
 
+  const loadTemplate = (template: FinancialTemplate) => {
+    loadSheets(template.build(), template.name);
+    setHubOpen(false);
+  };
+
+  const extendTemplate = (template: FinancialTemplate) => {
+    setHubOpen(false);
+    void send(template.prompt);
+  };
+
+  const onAssumptionChange = (a: Assumption, value: number) => {
+    setSheets((prev) =>
+      prev.map((s, si) => {
+        if (si !== a.sheet) return s;
+        const rows = s.rows.map((r) => [...r]);
+        const target = rows[a.row];
+        if (!target) return s;
+        while (target.length <= a.col) target.push("");
+        target[a.col] = a.isPercent ? `${value}%` : String(value);
+        return { ...s, rows };
+      }),
+    );
+  };
+
+  const setDriverCell = (label: RegExp, value: string) => {
+    setSheets((prev) =>
+      prev.map((s) => {
+        const idx = s.rows.findIndex((r) => label.test((r[0] ?? "").trim()));
+        if (idx === -1) return s;
+        const rows = s.rows.map((r) => [...r]);
+        const target = rows[idx] as string[];
+        while (target.length <= 1) target.push("");
+        target[1] = value;
+        return { ...s, rows };
+      }),
+    );
+  };
+
+  const exportStyled = async () => {
+    const id = toast.loading("Building styled workbook…");
+    try {
+      await downloadStyledWorkbook(sheets, "sheetsmith-model");
+      toast.dismiss(id);
+      toast.success("Styled .xlsx downloaded");
+    } catch (e) {
+      toast.dismiss(id);
+      toast.error(e instanceof Error ? e.message : "Export failed.");
+    }
+  };
+
   return (
     <div
       className="flex h-screen flex-col overflow-hidden bg-background"
@@ -212,6 +272,10 @@ function Index() {
           onChange={(e) => e.target.files && void handleFiles(e.target.files)}
         />
 
+        <Button size="sm" variant="outline" onClick={() => setHubOpen(true)}>
+          <LayoutTemplate className="size-4" /> Templates
+        </Button>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button size="sm">
@@ -219,8 +283,11 @@ function Index() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => void exportStyled()}>
+              Download styled .xlsx (model colours)
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => downloadWorkbook(sheets, "xlsx", "sheetsmith")}>
-              Download .xlsx
+              Download plain .xlsx
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => downloadWorkbook([activeSheet], "csv", activeSheet.name)}>
               Download .csv (active sheet)
@@ -239,7 +306,11 @@ function Index() {
       <div className="flex min-h-0 flex-1">
         <main className="flex min-w-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 border-r border-border">
-            <SheetGrid sheet={activeSheet} onCellChange={onCellChange} />
+            <SheetGrid
+              sheet={activeSheet}
+              onCellChange={onCellChange}
+              highlightFormulas={highlightFormulas}
+            />
           </div>
           <div className="flex items-center gap-1 border-t border-r border-border bg-grid-header px-2 py-1.5">
             {sheets.map((s, i) => (
@@ -277,18 +348,45 @@ function Index() {
           </div>
         </main>
 
-        <div className="w-[24rem] shrink-0 max-lg:hidden">
-          <ChatPanel
-            messages={messages}
-            input={input}
-            setInput={setInput}
-            onSend={send}
-            busy={busy}
-            formulas={formulas}
-            vba={vba}
+        <div className="flex w-[24rem] shrink-0 flex-col overflow-y-auto max-lg:hidden">
+          <div className="min-h-0 flex-1">
+            <ChatPanel
+              messages={messages}
+              input={input}
+              setInput={setInput}
+              onSend={send}
+              busy={busy}
+              formulas={formulas}
+              vba={vba}
+            />
+          </div>
+          <ModelControls
+            assumptions={assumptions}
+            scenario={scenario}
+            onScenario={(v) => {
+              setScenario(v);
+              setDriverCell(/^scenario/i, v);
+            }}
+            depreciation={depreciation}
+            onDepreciation={(v) => {
+              setDepreciation(v);
+              setDriverCell(/depreciation method|method/i, v);
+            }}
+            liveFormulas={highlightFormulas}
+            onLiveFormulas={setHighlightFormulas}
+            onAssumptionChange={onAssumptionChange}
           />
         </div>
       </div>
+
+      <TemplateHub
+        open={hubOpen}
+        onOpenChange={setHubOpen}
+        onLoad={loadTemplate}
+        onExtend={extendTemplate}
+        onPrompt={(text) => void send(text)}
+      />
+      
 
       {dragging && (
         <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-primary/10 backdrop-blur-sm">

@@ -16,9 +16,10 @@ function colLabel(index: number) {
 type Props = {
   sheet: Sheet;
   onCellChange: (row: number, col: number, value: string) => void;
+  highlightFormulas?: boolean;
 };
 
-export function SheetGrid({ sheet, onCellChange }: Props) {
+export function SheetGrid({ sheet, onCellChange, highlightFormulas = true }: Props) {
   const [active, setActive] = useState<string | null>(null);
   const cols = Math.max(8, ...sheet.rows.map((r) => r.length));
   const rows = Math.max(20, sheet.rows.length);
@@ -60,7 +61,7 @@ export function SheetGrid({ sheet, onCellChange }: Props) {
                       className={cn(
                         "w-full bg-transparent px-2 py-1 outline-none",
                         isHeader && "font-semibold text-foreground",
-                        isFormula && "cell-formula",
+                        isFormula && highlightFormulas && "cell-formula",
                         active === id && "ring-2 ring-inset ring-ring",
                         !isFormula && /^[-$(]?[\d,.]+%?\)?$/.test(value) && "text-right tabular-nums",
                       )}
