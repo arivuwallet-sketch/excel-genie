@@ -176,6 +176,42 @@ function Index() {
     setActiveIndex(0);
   };
 
+  const loadTemplate = (template: FinancialTemplate) => {
+    loadSheets(template.build(), template.name);
+    setHubOpen(false);
+  };
+
+  const extendTemplate = (template: FinancialTemplate) => {
+    setHubOpen(false);
+    void send(template.prompt);
+  };
+
+  const onAssumptionChange = (a: Assumption, value: number) => {
+    setSheets((prev) =>
+      prev.map((s, si) => {
+        if (si !== a.sheet) return s;
+        const rows = s.rows.map((r) => [...r]);
+        const target = rows[a.row];
+        if (!target) return s;
+        while (target.length <= a.col) target.push("");
+        target[a.col] = a.isPercent ? `${value}%` : String(value);
+        return { ...s, rows };
+      }),
+    );
+  };
+
+  const exportStyled = async () => {
+    const id = toast.loading("Building styled workbook…");
+    try {
+      await downloadStyledWorkbook(sheets, "sheetsmith-model");
+      toast.dismiss(id);
+      toast.success("Styled .xlsx downloaded");
+    } catch (e) {
+      toast.dismiss(id);
+      toast.error(e instanceof Error ? e.message : "Export failed.");
+    }
+  };
+
   return (
     <div
       className="flex h-screen flex-col overflow-hidden bg-background"
