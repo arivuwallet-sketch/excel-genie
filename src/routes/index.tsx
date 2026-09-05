@@ -200,6 +200,20 @@ function Index() {
     );
   };
 
+  const setDriverCell = (label: RegExp, value: string) => {
+    setSheets((prev) =>
+      prev.map((s) => {
+        const idx = s.rows.findIndex((r) => label.test((r[0] ?? "").trim()));
+        if (idx === -1) return s;
+        const rows = s.rows.map((r) => [...r]);
+        const target = rows[idx] as string[];
+        while (target.length <= 1) target.push("");
+        target[1] = value;
+        return { ...s, rows };
+      }),
+    );
+  };
+
   const exportStyled = async () => {
     const id = toast.loading("Building styled workbook…");
     try {
@@ -292,7 +306,11 @@ function Index() {
       <div className="flex min-h-0 flex-1">
         <main className="flex min-w-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 border-r border-border">
-            <SheetGrid sheet={activeSheet} onCellChange={onCellChange} />
+            <SheetGrid
+              sheet={activeSheet}
+              onCellChange={onCellChange}
+              highlightFormulas={highlightFormulas}
+            />
           </div>
           <div className="flex items-center gap-1 border-t border-r border-border bg-grid-header px-2 py-1.5">
             {sheets.map((s, i) => (
@@ -345,9 +363,15 @@ function Index() {
           <ModelControls
             assumptions={assumptions}
             scenario={scenario}
-            onScenario={setScenario}
+            onScenario={(v) => {
+              setScenario(v);
+              setDriverCell(/^scenario/i, v);
+            }}
             depreciation={depreciation}
-            onDepreciation={setDepreciation}
+            onDepreciation={(v) => {
+              setDepreciation(v);
+              setDriverCell(/depreciation method|method/i, v);
+            }}
             liveFormulas={highlightFormulas}
             onLiveFormulas={setHighlightFormulas}
             onAssumptionChange={onAssumptionChange}
