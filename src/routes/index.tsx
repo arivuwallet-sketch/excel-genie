@@ -330,18 +330,39 @@ function Index() {
           </div>
         </main>
 
-        <div className="w-[24rem] shrink-0 max-lg:hidden">
-          <ChatPanel
-            messages={messages}
-            input={input}
-            setInput={setInput}
-            onSend={send}
-            busy={busy}
-            formulas={formulas}
-            vba={vba}
+        <div className="flex w-[24rem] shrink-0 flex-col overflow-y-auto max-lg:hidden">
+          <div className="min-h-0 flex-1">
+            <ChatPanel
+              messages={messages}
+              input={input}
+              setInput={setInput}
+              onSend={send}
+              busy={busy}
+              formulas={formulas}
+              vba={vba}
+            />
+          </div>
+          <ModelControls
+            assumptions={assumptions}
+            scenario={scenario}
+            onScenario={setScenario}
+            depreciation={depreciation}
+            onDepreciation={setDepreciation}
+            liveFormulas={highlightFormulas}
+            onLiveFormulas={setHighlightFormulas}
+            onAssumptionChange={onAssumptionChange}
           />
         </div>
       </div>
+
+      <TemplateHub
+        open={hubOpen}
+        onOpenChange={setHubOpen}
+        onLoad={loadTemplate}
+        onExtend={extendTemplate}
+        onPrompt={(text) => void send(text)}
+      />
+      
 
       {dragging && (
         <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-primary/10 backdrop-blur-sm">
