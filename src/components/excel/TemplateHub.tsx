@@ -34,6 +34,9 @@ const TIER_BLURB: Record<TemplateTier, string> = {
   Basic: "Everyday budgeting, bookkeeping and tracking workbooks.",
   Intermediate: "Three-statement models, reconciliations, aging and variance packs.",
   Advanced: "DCF, LBO, M&A accretion/dilution, SaaS metrics and scenario engines.",
+  Quantitative: "Monte Carlo, Black-Scholes Greeks, risk and statistical engines.",
+  Dashboards: "KPI boards, executive summaries and interactive reporting views.",
+  Institutional: "Cap tables, bank, real estate, REIT, shipping and FinOps models.",
 };
 
 export function TemplateHub({ open, onOpenChange, onLoad, onExtend, onPrompt }: Props) {
@@ -105,7 +108,7 @@ export function TemplateHub({ open, onOpenChange, onLoad, onExtend, onPrompt }: 
           </ScrollArea>
         ) : (
           <Tabs defaultValue="Basic" className="flex min-h-0 flex-1 flex-col">
-            <TabsList>
+            <TabsList className="h-auto flex-wrap justify-start">
               {TIERS.map((tier) => (
                 <TabsTrigger key={tier} value={tier}>
                   {tier}

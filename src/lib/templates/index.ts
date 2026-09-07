@@ -1,6 +1,9 @@
 import { ADVANCED_TEMPLATES } from "./advanced";
 import { BASIC_TEMPLATES } from "./basic";
+import { DASHBOARD_TEMPLATES } from "./dashboards";
+import { INSTITUTIONAL_TEMPLATES } from "./institutional";
 import { INTERMEDIATE_TEMPLATES } from "./intermediate";
+import { QUANT_TEMPLATES } from "./quant";
 import type { FinancialTemplate, TemplateTier } from "./types";
 
 export type { FinancialTemplate, TemplateTier };
@@ -9,9 +12,19 @@ export const ALL_TEMPLATES: FinancialTemplate[] = [
   ...BASIC_TEMPLATES,
   ...INTERMEDIATE_TEMPLATES,
   ...ADVANCED_TEMPLATES,
+  ...QUANT_TEMPLATES,
+  ...DASHBOARD_TEMPLATES,
+  ...INSTITUTIONAL_TEMPLATES,
 ];
 
-export const TIERS: TemplateTier[] = ["Basic", "Intermediate", "Advanced"];
+export const TIERS: TemplateTier[] = [
+  "Basic",
+  "Intermediate",
+  "Advanced",
+  "Quantitative",
+  "Dashboards",
+  "Institutional",
+];
 
 export const templatesByTier = (tier: TemplateTier) =>
   ALL_TEMPLATES.filter((t) => t.tier === tier);
