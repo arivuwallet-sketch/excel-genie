@@ -108,7 +108,7 @@ export function TemplateHub({ open, onOpenChange, onLoad, onExtend, onPrompt }: 
           </ScrollArea>
         ) : (
           <Tabs defaultValue="Basic" className="flex min-h-0 flex-1 flex-col">
-            <TabsList>
+            <TabsList className="h-auto flex-wrap justify-start">
               {TIERS.map((tier) => (
                 <TabsTrigger key={tier} value={tier}>
                   {tier}
