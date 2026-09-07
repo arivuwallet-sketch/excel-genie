@@ -3,6 +3,7 @@ import { streamText } from "ai";
 import { z } from "zod";
 
 import { createLovableAiGatewayProvider } from "./ai-gateway.server";
+import { auditAndRepair, summarizeIssues, type AuditIssue } from "./formula-audit";
 
 const SheetSchema = z.object({
   name: z.string(),
@@ -23,7 +24,11 @@ const ResultSchema = z.object({
 });
 
 export type AgentSheet = z.infer<typeof SheetSchema>;
-export type AgentResult = z.infer<typeof ResultSchema>;
+export type AgentResult = z.infer<typeof ResultSchema> & {
+  issues: AuditIssue[];
+  fixes: string[];
+};
+
 
 const SYSTEM = `You are an expert Microsoft Excel engineer and financial analyst embedded in a spreadsheet app.
 Expertise: data entry & cell editing, formatting and conditional formatting, print/template setups,
