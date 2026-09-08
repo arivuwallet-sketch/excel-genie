@@ -59,6 +59,11 @@ function Index() {
   const [busy, setBusy] = useState(false);
   const [formulas, setFormulas] = useState<string[]>([]);
   const [vba, setVba] = useState("");
+  const [audit, setAudit] = useState<{ issues: AuditIssue[]; fixes: string[] }>({
+    issues: [],
+    fixes: [],
+  });
+
   const [dragging, setDragging] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [hubOpen, setHubOpen] = useState(false);
