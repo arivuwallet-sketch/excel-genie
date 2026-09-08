@@ -18,6 +18,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { downloadStyledWorkbook } from "@/lib/excel-export";
 import { runExcelAgent } from "@/lib/excel.functions";
+import { auditAndRepair, type AuditIssue } from "@/lib/formula-audit";
+
 import {
   ACCEPT_ATTR,
   downloadWorkbook,
