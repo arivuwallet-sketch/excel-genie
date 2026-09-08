@@ -18,17 +18,18 @@ export const INTERMEDIATE_TEMPLATES: FinancialTemplate[] = [
       const cols = Array.from({ length: n }, (_, i) => COL(i));
       const IS = [
         ["INCOME STATEMENT ($000s)", ...YEARS],
-        ["Revenue", 12000, "=B3*(1+$B$28)", "=C3*(1+$B$28)", "=D3*(1+$B$28)", "=E3*(1+$B$28)"],
+        [],
+        ["Revenue", 12000, "=B3*(1+$B$21)", "=C3*(1+$B$21)", "=D3*(1+$B$21)", "=E3*(1+$B$21)"],
         ...[
-          ["COGS", "=-B3*$B$29"],
+          ["COGS", "=-B3*$B$22"],
           ["Gross profit", "=B3+B4"],
-          ["Operating expenses", "=-B3*$B$30"],
+          ["Operating expenses", "=-B3*$B$23"],
           ["EBITDA", "=B5+B6"],
-          ["Depreciation", "=-B3*$B$31"],
+          ["Depreciation", "=-B3*$B$24"],
           ["EBIT", "=B7+B8"],
-          ["Interest expense", "=-'Balance Sheet'!B14*$B$32"],
+          ["Interest expense", "=-'Balance Sheet'!B14*$B$25"],
           ["Pre-tax income", "=B9+B10"],
-          ["Taxes", "=-MAX(0,B11)*$B$33"],
+          ["Taxes", "=-MAX(0,B11)*$B$26"],
           ["Net income", "=B11+B12"],
         ].map(([label, f]) => [
           label as string,
@@ -39,9 +40,9 @@ export const INTERMEDIATE_TEMPLATES: FinancialTemplate[] = [
         ...IS,
         [],
         ["Margins"],
-        ["Gross margin %", ...cols.map((c) => `=${c}5/${c}3`)],
-        ["EBITDA margin %", ...cols.map((c) => `=${c}7/${c}3`)],
-        ["Net margin %", ...cols.map((c) => `=${c}13/${c}3`)],
+        ["Gross margin %", ...cols.map((c) => `=IFERROR(${c}5/${c}3,0)`)],
+        ["EBITDA margin %", ...cols.map((c) => `=IFERROR(${c}7/${c}3,0)`)],
+        ["Net margin %", ...cols.map((c) => `=IFERROR(${c}13/${c}3,0)`)],
         [],
         ["ASSUMPTIONS (blue = input)"],
         ["Revenue growth", 0.14],
@@ -55,6 +56,7 @@ export const INTERMEDIATE_TEMPLATES: FinancialTemplate[] = [
         ["DPO (days)", 41],
         ["CapEx % of revenue", 0.06],
       ]);
+
 
       const bs = S("Balance Sheet", [
         ["BALANCE SHEET ($000s)", ...YEARS],
