@@ -370,6 +370,9 @@ function Index() {
               busy={busy}
               formulas={formulas}
               vba={vba}
+              issues={audit.issues}
+              fixes={audit.fixes}
+
             />
           </div>
           <ModelControls
