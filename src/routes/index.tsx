@@ -164,6 +164,8 @@ function Index() {
       }
       setFormulas(result.formulas ?? []);
       setVba(result.vba ?? "");
+      setAudit({ issues: result.issues ?? [], fixes: result.fixes ?? [] });
+
       setMessages((m) => [...m, { role: "assistant", content: result.reply }]);
       toast.success("Workbook updated");
     } catch (e) {
