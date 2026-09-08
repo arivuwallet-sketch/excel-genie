@@ -131,7 +131,6 @@ export const INTERMEDIATE_TEMPLATES: FinancialTemplate[] = [
         ["Debt issued / (repaid)", ...cols.map(() => 0)],
         ["Dividends paid", ...cols.map((c) => `=-'Income Statement'!${c}13*0.15`)],
         ["Cash from financing", ...cols.map((c) => `=SUM(${c}14:${c}15)`)],
-        [],
         ["Opening cash", ...cols.map((c, i) => (i === 0 ? "=1800" : `=${COL(i - 1)}18`))],
         ["Closing cash", ...cols.map((c) => `=${c}17+${c}9+${c}12+${c}16`)],
         ["Free cash flow", ...cols.map((c) => `=${c}9+${c}12`)],
