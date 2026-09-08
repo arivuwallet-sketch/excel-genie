@@ -179,7 +179,7 @@ export const BASIC_TEMPLATES: FinancialTemplate[] = [
           ...e,
           `=D${r}-E${r}`,
           i === 0 ? `=$B$2+F${r}` : `=G${r - 1}+F${r}`,
-          `=IF(G${r}<$B$21,"LOW CASH","")`,
+          `=IF(G${r}<$B$20,"LOW CASH","")`,
         ]);
       });
       rows.push(
