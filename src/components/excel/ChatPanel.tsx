@@ -28,9 +28,22 @@ type Props = {
   busy: boolean;
   formulas: string[];
   vba: string;
+  issues?: { sheet: string; cell: string; kind: string; detail: string }[];
+  fixes?: string[];
 };
 
-export function ChatPanel({ messages, input, setInput, onSend, busy, formulas, vba }: Props) {
+export function ChatPanel({
+  messages,
+  input,
+  setInput,
+  onSend,
+  busy,
+  formulas,
+  vba,
+  issues = [],
+  fixes = [],
+}: Props) {
+
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
