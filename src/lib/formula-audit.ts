@@ -203,7 +203,7 @@ export function auditAndRepair(input: Sheet[]): AuditReport {
           } else if (
             r.start.row === r.end.row &&
             r.start.col === r.end.col &&
-            /[-+*/]/.test(stripLiterals(formula).replace(/^=/, "")) &&
+            isArithmeticOperand(formula, r) &&
             isTextCell(cellAt(target, r.start.row, r.start.col))
           ) {
             issues.push({
@@ -214,6 +214,7 @@ export function auditAndRepair(input: Sheet[]): AuditReport {
               detail: `${r.text} holds text ("${cellAt(target, r.start.row, r.start.col).slice(0, 24)}"), so the maths cannot resolve.`,
             });
           }
+
         }
 
         line[col] = formula;
@@ -224,10 +225,26 @@ export function auditAndRepair(input: Sheet[]): AuditReport {
   return { sheets, fixes, issues: dedupe(issues) };
 }
 
+/** True when the ref is a direct operand of + - * / ^ (not a comparison or text argument). */
+function isArithmeticOperand(formula: string, r: Ref) {
+  const s = stripLiterals(formula);
+  const before = s.slice(0, r.index).replace(/\s+$/, "");
+  const after = s.slice(r.index + r.text.length).replace(/^\s+/, "");
+  const opBefore = /[-+*/^]$/.test(before) && !/[=<>]$/.test(before);
+  const opAfter = /^[-+*/^]/.test(after) && !/^[-+*/^]?=/.test(after);
+  return opBefore || opAfter;
+}
+
 function isTextCell(value: string) {
   if (!value || value.startsWith("=")) return false;
-  return !/^-?\(?\$?-?[\d,]+(\.\d+)?\)?%?$/.test(value);
+  if (/^-?\(?\$?-?[\d,]+(\.\d+)?\)?%?$/.test(value)) return false;
+  // dates and date-times behave as numbers in Excel maths
+  if (/^\d{4}-\d{1,2}-\d{1,2}([ T].*)?$/.test(value)) return false;
+  if (/^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$/.test(value)) return false;
+  if (/^-?\$?[\d,]+(\.\d+)?\s*(x|bps)$/i.test(value)) return false;
+  return true;
 }
+
 
 function escapeRe(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

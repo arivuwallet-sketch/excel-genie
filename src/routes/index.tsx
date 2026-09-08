@@ -18,6 +18,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { downloadStyledWorkbook } from "@/lib/excel-export";
 import { runExcelAgent } from "@/lib/excel.functions";
+import { auditAndRepair, type AuditIssue } from "@/lib/formula-audit";
+
 import {
   ACCEPT_ATTR,
   downloadWorkbook,
@@ -59,6 +61,11 @@ function Index() {
   const [busy, setBusy] = useState(false);
   const [formulas, setFormulas] = useState<string[]>([]);
   const [vba, setVba] = useState("");
+  const [audit, setAudit] = useState<{ issues: AuditIssue[]; fixes: string[] }>({
+    issues: [],
+    fixes: [],
+  });
+
   const [dragging, setDragging] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [hubOpen, setHubOpen] = useState(false);
@@ -73,11 +80,14 @@ function Index() {
   const activeSheet = sheets[Math.min(activeIndex, sheets.length - 1)] ?? emptySheet();
 
   const loadSheets = useCallback((next: Sheet[], label: string) => {
-    setSheets(next);
+    const report = auditAndRepair(next);
+    setSheets(report.sheets);
     setActiveIndex(0);
     setFileName(label);
+    setAudit({ issues: report.issues, fixes: report.fixes });
     toast.success(`Loaded ${next.length} sheet${next.length > 1 ? "s" : ""} from ${label}`);
   }, []);
+
 
   const handleFiles = useCallback(
     async (files: FileList | File[]) => {
@@ -154,6 +164,8 @@ function Index() {
       }
       setFormulas(result.formulas ?? []);
       setVba(result.vba ?? "");
+      setAudit({ issues: result.issues ?? [], fixes: result.fixes ?? [] });
+
       setMessages((m) => [...m, { role: "assistant", content: result.reply }]);
       toast.success("Workbook updated");
     } catch (e) {
@@ -358,6 +370,9 @@ function Index() {
               busy={busy}
               formulas={formulas}
               vba={vba}
+              issues={audit.issues}
+              fixes={audit.fixes}
+
             />
           </div>
           <ModelControls

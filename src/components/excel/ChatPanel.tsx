@@ -1,4 +1,4 @@
-import { Loader2, Send, Sparkles, Terminal } from "lucide-react";
+import { Loader2, Send, ShieldCheck, Sparkles, Terminal } from "lucide-react";
 import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 
@@ -28,9 +28,22 @@ type Props = {
   busy: boolean;
   formulas: string[];
   vba: string;
+  issues?: { sheet: string; cell: string; kind: string; detail: string }[];
+  fixes?: string[];
 };
 
-export function ChatPanel({ messages, input, setInput, onSend, busy, formulas, vba }: Props) {
+export function ChatPanel({
+  messages,
+  input,
+  setInput,
+  onSend,
+  busy,
+  formulas,
+  vba,
+  issues = [],
+  fixes = [],
+}: Props) {
+
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -116,7 +129,51 @@ export function ChatPanel({ messages, input, setInput, onSend, busy, formulas, v
             </pre>
           </div>
         )}
+        {(issues.length > 0 || fixes.length > 0) && (
+          <div className="rounded-lg border border-sidebar-border p-3">
+            <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/60">
+              <ShieldCheck className="size-3.5" /> Workbook audit
+            </p>
+            {fixes.length > 0 && (
+              <div className="mb-2 space-y-1">
+                <p className="text-[11px] font-medium text-emerald-400">
+                  Auto-repaired ({fixes.length})
+                </p>
+                {fixes.slice(0, 12).map((f, i) => (
+                  <p key={i} className="text-[11px] leading-snug text-sidebar-foreground/75">
+                    {f}
+                  </p>
+                ))}
+              </div>
+            )}
+            {issues.length > 0 ? (
+              <div className="space-y-1">
+                <p className="text-[11px] font-medium text-amber-400">
+                  Needs attention ({issues.length})
+                </p>
+                {issues.slice(0, 12).map((it, i) => (
+                  <p key={i} className="text-[11px] leading-snug text-sidebar-foreground/75">
+                    <span className="font-mono">
+                      {it.sheet}!{it.cell}
+                    </span>{" "}
+                    — {it.detail}
+                  </p>
+                ))}
+                {issues.length > 12 && (
+                  <p className="text-[11px] text-sidebar-foreground/50">
+                    +{issues.length - 12} more…
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-[11px] text-emerald-400">
+                No broken references or unguarded formulas found.
+              </p>
+            )}
+          </div>
+        )}
         <div ref={endRef} />
+
       </div>
 
       <div className="border-t border-sidebar-border p-3">

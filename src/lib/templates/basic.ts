@@ -179,7 +179,7 @@ export const BASIC_TEMPLATES: FinancialTemplate[] = [
           ...e,
           `=D${r}-E${r}`,
           i === 0 ? `=$B$2+F${r}` : `=G${r - 1}+F${r}`,
-          `=IF(G${r}<$B$21,"LOW CASH","")`,
+          `=IF(G${r}<$B$20,"LOW CASH","")`,
         ]);
       });
       rows.push(
@@ -248,7 +248,7 @@ export const BASIC_TEMPLATES: FinancialTemplate[] = [
         ["Company", "SheetSmith Consulting"],
         ["Invoice #", "INV-2041"],
         ["Date", "2026-03-01"],
-        ["Due date", "=D4+30"],
+        ["Due date", "=B4+30"],
         ["Customer", "Northwind Ltd"],
         [],
         ["Description", "Qty", "Unit price", "Line total"],
