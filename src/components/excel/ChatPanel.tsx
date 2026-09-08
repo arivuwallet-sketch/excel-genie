@@ -1,4 +1,4 @@
-import { Loader2, Send, Sparkles, Terminal } from "lucide-react";
+import { Loader2, Send, ShieldCheck, Sparkles, Terminal } from "lucide-react";
 import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 
