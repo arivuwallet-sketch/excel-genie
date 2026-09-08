@@ -73,11 +73,14 @@ function Index() {
   const activeSheet = sheets[Math.min(activeIndex, sheets.length - 1)] ?? emptySheet();
 
   const loadSheets = useCallback((next: Sheet[], label: string) => {
-    setSheets(next);
+    const report = auditAndRepair(next);
+    setSheets(report.sheets);
     setActiveIndex(0);
     setFileName(label);
+    setAudit({ issues: report.issues, fixes: report.fixes });
     toast.success(`Loaded ${next.length} sheet${next.length > 1 ? "s" : ""} from ${label}`);
   }, []);
+
 
   const handleFiles = useCallback(
     async (files: FileList | File[]) => {
