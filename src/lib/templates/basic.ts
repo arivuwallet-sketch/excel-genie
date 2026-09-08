@@ -248,7 +248,7 @@ export const BASIC_TEMPLATES: FinancialTemplate[] = [
         ["Company", "SheetSmith Consulting"],
         ["Invoice #", "INV-2041"],
         ["Date", "2026-03-01"],
-        ["Due date", "=D4+30"],
+        ["Due date", "=B4+30"],
         ["Customer", "Northwind Ltd"],
         [],
         ["Description", "Qty", "Unit price", "Line total"],
