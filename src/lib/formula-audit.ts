@@ -203,7 +203,7 @@ export function auditAndRepair(input: Sheet[]): AuditReport {
           } else if (
             r.start.row === r.end.row &&
             r.start.col === r.end.col &&
-            /[-+*/]/.test(stripLiterals(formula).replace(/^=/, "")) &&
+            isArithmeticOperand(formula, r) &&
             isTextCell(cellAt(target, r.start.row, r.start.col))
           ) {
             issues.push({
@@ -214,6 +214,7 @@ export function auditAndRepair(input: Sheet[]): AuditReport {
               detail: `${r.text} holds text ("${cellAt(target, r.start.row, r.start.col).slice(0, 24)}"), so the maths cannot resolve.`,
             });
           }
+
         }
 
         line[col] = formula;
