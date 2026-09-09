@@ -321,28 +321,28 @@ export const ADVANCED_TEMPLATES: FinancialTemplate[] = [
         ["Exit EBITDA (final year)", "='Operating Model'!F3"],
         ["Exit multiple", "='Sources & Uses'!B21"],
         ["Exit enterprise value", "=B3*B4"],
-        ["Less: net debt at exit", "=-'Debt Schedule'!F26"],
+        ["Less: net debt at exit", "=-'Debt Schedule'!F27"],
         ["Exit equity value", "=B5+B6"],
         ["Sponsor equity invested", "='Sources & Uses'!C16"],
-        ["MoIC (x)", "=B7/B8"],
+        ["MoIC (x)", "=IFERROR(B7/B8,0)"],
         ["Holding period (yrs)", "='Sources & Uses'!B22"],
-        ["IRR", "=B9^(1/B10)-1"],
+        ["IRR", "=IFERROR(B9^(1/B10)-1,0)"],
         [],
-        ["Cash flows", "-'Sources & Uses'!C16", 0, 0, 0, 0, "=B7"],
-        ["IRR (XIRR-style check)", "=IRR({0})"],
+        ["Cash flows", "=-'Sources & Uses'!C16", 0, 0, 0, 0, "=B7"],
+        ["IRR (check on cash flows)", "=IFERROR(IRR(B13:G13),0)"],
         [],
         ["SENSITIVITY — IRR"],
         ["Rows: exit multiple   Columns: entry multiple"],
         ["IRR", 8, 8.5, 9, 9.5, 10],
         ...[8.5, 9, 9.5, 10, 10.5].map((ex, i) => {
-          const row = 18 + i;
+          const row = 19 + i;
           return [
             ex,
             ...[1, 2, 3, 4, 5].map(
               (c) =>
-                `=(($A${row}*'Operating Model'!$F$3-'Debt Schedule'!$F$26)/(${String.fromCharCode(
+                `=IFERROR((($A${row}*'Operating Model'!$F$3-'Debt Schedule'!$F$27)/(${String.fromCharCode(
                   65 + c,
-                )}$17*'Sources & Uses'!$B$4+'Sources & Uses'!$B$8-SUM('Sources & Uses'!$C$12:$C$15)))^(1/$B$10)-1`,
+                )}$18*'Sources & Uses'!$B$4+'Sources & Uses'!$B$8-SUM('Sources & Uses'!$C$12:$C$15)))^(1/$B$10)-1,0)`,
             ),
           ];
         }),
@@ -350,14 +350,14 @@ export const ADVANCED_TEMPLATES: FinancialTemplate[] = [
         ["SENSITIVITY — MoIC"],
         ["MoIC", 8, 8.5, 9, 9.5, 10],
         ...[8.5, 9, 9.5, 10, 10.5].map((ex, i) => {
-          const row = 26 + i;
+          const row = 27 + i;
           return [
             ex,
             ...[1, 2, 3, 4, 5].map(
               (c) =>
-                `=($A${row}*'Operating Model'!$F$3-'Debt Schedule'!$F$26)/(${String.fromCharCode(
+                `=IFERROR(($A${row}*'Operating Model'!$F$3-'Debt Schedule'!$F$27)/(${String.fromCharCode(
                   65 + c,
-                )}$25*'Sources & Uses'!$B$4+'Sources & Uses'!$B$8-SUM('Sources & Uses'!$C$12:$C$15))`,
+                )}$26*'Sources & Uses'!$B$4+'Sources & Uses'!$B$8-SUM('Sources & Uses'!$C$12:$C$15)),0)`,
             ),
           ];
         }),
