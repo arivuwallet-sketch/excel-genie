@@ -323,8 +323,8 @@ export const QUANT_TEMPLATES: FinancialTemplate[] = [
         ["CASE TABLE (CHOOSE-driven)", "Base", "Upside", "Downside"],
         ["Availability factor", 0.94, 0.97, 0.88],
         ["Merchant price uplift", 1, 1.12, 0.85],
-        ["Selected availability", "=IFERROR(CHOOSE(MATCH($B$10,$C$12:$E$12,0),C13,D13,E13),C13)"],
-        ["Selected price uplift", "=IFERROR(CHOOSE(MATCH($B$10,$C$12:$E$12,0),C14,D14,E14),C14)"],
+        ["Selected availability", "=IFERROR(CHOOSE(MATCH($B$10,$B$12:$D$12,0),B13,C13,D13),B13)"],
+        ["Selected price uplift", "=IFERROR(CHOOSE(MATCH($B$10,$B$12:$D$12,0),B14,C14,D14),B14)"],
       ]),
       S("Debt Sculpting", [
         ["CASH FLOW AVAILABLE FOR DEBT SERVICE & SCULPTED REPAYMENT"],
