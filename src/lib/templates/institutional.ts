@@ -258,7 +258,7 @@ export const INSTITUTIONAL_TEMPLATES: FinancialTemplate[] = [
         ["Dividend payout of AFFO", "=IFERROR(Assumptions!$B$11/B13,0)"],
         [],
         ["NAV BUILD"],
-        ["Gross real estate value", "=IFERROR(B9/Assumptions!$B$13,0)"],
+        ["Gross real estate value", "=IFERROR(B9/Assumptions!$B$12,0)"],
         ["Other assets", 240000000],
         ["Total debt", -4650000000],
         ["Preferred equity", -300000000],
