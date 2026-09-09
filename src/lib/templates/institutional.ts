@@ -384,7 +384,7 @@ export const INSTITUTIONAL_TEMPLATES: FinancialTemplate[] = [
       S("ARR Roll-forward", [
         ["ARR ROLL-FORWARD", "Q1", "Q2", "Q3", "Q4"],
         ["Opening ARR", "=Assumptions!$B$6", "=B8", "=C8", "=D8"],
-        ["New ARR", "=Assumptions!$B$7*Assumptions!$B$18", "=B3*1.05", "=C3*1.05", "=D3*1.05"],
+        ["New ARR", "=Assumptions!$B$7*Assumptions!$B$17", "=B3*1.05", "=C3*1.05", "=D3*1.05"],
         ["Expansion", "=B2*Assumptions!$B$8", "=C2*Assumptions!$B$8", "=D2*Assumptions!$B$8", "=E2*Assumptions!$B$8"],
         ["Contraction", "=-B2*Assumptions!$B$9", "=-C2*Assumptions!$B$9", "=-D2*Assumptions!$B$9", "=-E2*Assumptions!$B$9"],
         ["Churn", "=-B2*Assumptions!$B$10", "=-C2*Assumptions!$B$10", "=-D2*Assumptions!$B$10", "=-E2*Assumptions!$B$10"],
