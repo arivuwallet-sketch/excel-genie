@@ -365,7 +365,7 @@ export const QUANT_TEMPLATES: FinancialTemplate[] = [
         [],
         ["Check", "Result"],
         ["Debt fully repaid by maturity", "=ABS('Debt Sculpting'!$G$20)<1"],
-        ["Min DSCR at or above target", "='Debt Sculpting'!$B$23>=Assumptions!$B$5-0.01"],
+        ["Min DSCR at or above target", "='Debt Sculpting'!$B$24>=Assumptions!$B$5-0.01"],
         ["Gearing below 80%", "='Debt Sculpting'!$B$14<0.8"],
         ["Circularity breaker engaged", '=Assumptions!$B$9="ON"'],
         ["MASTER CHECK", "=AND(B4:B7)"],

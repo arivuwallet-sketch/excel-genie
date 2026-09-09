@@ -343,7 +343,7 @@ export const INSTITUTIONAL_TEMPLATES: FinancialTemplate[] = [
           "TCE",
           ...["B", "C", "D", "E", "F"].map(
             (c) =>
-              `=IFERROR((Assumptions!$B$6*${c}$25*(1-Assumptions!$B$20)+$B$19)/$B$6,0)`,
+              `=IFERROR((Assumptions!$B$6*${c}$27*(1-Assumptions!$B$20)+$B$19)/$B$6,0)`,
           ),
         ],
       ]),
@@ -353,8 +353,8 @@ export const INSTITUTIONAL_TEMPLATES: FinancialTemplate[] = [
         ["Check", "Result"],
         ["Voyage days positive", "=Voyage!$B$6>0"],
         ["Voyage costs negative", "=Voyage!$B$19<0"],
-        ["TCE calculable", "=ISNUMBER(Voyage!$B$22)"],
-        ["Breakeven below current rate", "=Voyage!$B$23<Assumptions!$B$22"],
+        ["TCE calculable", "=ISNUMBER(Voyage!$B$23)"],
+        ["Breakeven below current rate", "=Voyage!$B$24<Assumptions!$B$22"],
         ["MASTER CHECK", "=AND(B4:B7)"],
       ]),
     ],
