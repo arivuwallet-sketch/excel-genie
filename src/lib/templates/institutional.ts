@@ -316,7 +316,7 @@ export const INSTITUTIONAL_TEMPLATES: FinancialTemplate[] = [
         [],
         ["Laden days", "=IFERROR(Assumptions!$B$8/(Assumptions!$B$10*24),0)"],
         ["Ballast days", "=IFERROR(Assumptions!$B$9/(Assumptions!$B$11*24),0)"],
-        ["Port days", "=Assumptions!$B$17"],
+        ["Port days", "=Assumptions!$B$16"],
         ["Total voyage days", "=B3+B4+B5"],
         [],
         ["REVENUE"],
