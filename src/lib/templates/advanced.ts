@@ -180,8 +180,8 @@ export const ADVANCED_TEMPLATES: FinancialTemplate[] = [
         [],
         ["Acquirer net income", "='Deal Assumptions'!B6"],
         ["Target net income", "='Deal Assumptions'!B16"],
-        ["Cost synergies (phased)", "='Deal Assumptions'!B27*'Deal Assumptions'!B28"],
-        ["Revenue synergy profit (phased)", "='Deal Assumptions'!B25*'Deal Assumptions'!B26*'Deal Assumptions'!B28"],
+        ["Cost synergies (phased)", "='Deal Assumptions'!B28*'Deal Assumptions'!B29"],
+        ["Revenue synergy profit (phased)", "='Deal Assumptions'!B26*'Deal Assumptions'!B27*'Deal Assumptions'!B29"],
         ["Interest on new debt", "=-'PPA & Goodwill'!B19*'Deal Assumptions'!B22"],
         ["Foregone interest on cash", "=-'PPA & Goodwill'!B18*'Deal Assumptions'!B24"],
         ["Incremental D&A", "=-('PPA & Goodwill'!B14+'PPA & Goodwill'!B16)"],
@@ -304,13 +304,16 @@ export const ADVANCED_TEMPLATES: FinancialTemplate[] = [
         [],
         ["HIGH YIELD NOTES"],
         ["Opening", ...cols.map((c, i) => (i === 0 ? "='Sources & Uses'!C15" : `=${COL(i - 1)}23`))],
-        ["Closing", ...cols.map((c) => `=${c}22`)],
+        ["Closing", ...cols.map((c) => `=${c}23`)],
         ["Total cash interest", ...cols.map((c) => `=${c}7+${c}14+${c}20+${c}23*'Sources & Uses'!$D$15`)],
         ["Total mandatory amortisation", ...cols.map((c) => `=-(${c}4+${c}11)`)],
-        ["Total debt outstanding", ...cols.map((c) => `=${c}6+${c}13+${c}19+${c}23`)],
-        ["Net debt / EBITDA", ...cols.map((c) => `=${c}26/'Operating Model'!${c}3`)],
-        ["Interest coverage (EBITDA / interest)", ...cols.map((c) => `='Operating Model'!${c}3/${c}24`)],
-        ["Covenant check (leverage < 6.0x)", ...cols.map((c) => `=IF(${c}27<6,"PASS","BREACH")`)],
+        ["Total debt outstanding", ...cols.map((c) => `=${c}6+${c}13+${c}19+${c}24`)],
+        ["Net debt / EBITDA", ...cols.map((c) => `=IFERROR(${c}27/'Operating Model'!${c}3,0)`)],
+        [
+          "Interest coverage (EBITDA / interest)",
+          ...cols.map((c) => `=IFERROR('Operating Model'!${c}3/${c}25,0)`),
+        ],
+        ["Covenant check (leverage < 6.0x)", ...cols.map((c) => `=IF(${c}28<6,"PASS","BREACH")`)],
       ]),
       S("Returns", [
         ["LBO RETURNS"],
@@ -318,28 +321,28 @@ export const ADVANCED_TEMPLATES: FinancialTemplate[] = [
         ["Exit EBITDA (final year)", "='Operating Model'!F3"],
         ["Exit multiple", "='Sources & Uses'!B21"],
         ["Exit enterprise value", "=B3*B4"],
-        ["Less: net debt at exit", "=-'Debt Schedule'!F26"],
+        ["Less: net debt at exit", "=-'Debt Schedule'!F27"],
         ["Exit equity value", "=B5+B6"],
         ["Sponsor equity invested", "='Sources & Uses'!C16"],
-        ["MoIC (x)", "=B7/B8"],
+        ["MoIC (x)", "=IFERROR(B7/B8,0)"],
         ["Holding period (yrs)", "='Sources & Uses'!B22"],
-        ["IRR", "=B9^(1/B10)-1"],
+        ["IRR", "=IFERROR(B9^(1/B10)-1,0)"],
         [],
-        ["Cash flows", "-'Sources & Uses'!C16", 0, 0, 0, 0, "=B7"],
-        ["IRR (XIRR-style check)", "=IRR({0})"],
+        ["Cash flows", "=-'Sources & Uses'!C16", 0, 0, 0, 0, "=B7"],
+        ["IRR (check on cash flows)", "=IFERROR(IRR(B13:G13),0)"],
         [],
         ["SENSITIVITY — IRR"],
         ["Rows: exit multiple   Columns: entry multiple"],
         ["IRR", 8, 8.5, 9, 9.5, 10],
         ...[8.5, 9, 9.5, 10, 10.5].map((ex, i) => {
-          const row = 18 + i;
+          const row = 19 + i;
           return [
             ex,
             ...[1, 2, 3, 4, 5].map(
               (c) =>
-                `=(($A${row}*'Operating Model'!$F$3-'Debt Schedule'!$F$26)/(${String.fromCharCode(
+                `=IFERROR((($A${row}*'Operating Model'!$F$3-'Debt Schedule'!$F$27)/(${String.fromCharCode(
                   65 + c,
-                )}$17*'Sources & Uses'!$B$4+'Sources & Uses'!$B$8-SUM('Sources & Uses'!$C$12:$C$15)))^(1/$B$10)-1`,
+                )}$18*'Sources & Uses'!$B$4+'Sources & Uses'!$B$8-SUM('Sources & Uses'!$C$12:$C$15)))^(1/$B$10)-1,0)`,
             ),
           ];
         }),
@@ -347,14 +350,14 @@ export const ADVANCED_TEMPLATES: FinancialTemplate[] = [
         ["SENSITIVITY — MoIC"],
         ["MoIC", 8, 8.5, 9, 9.5, 10],
         ...[8.5, 9, 9.5, 10, 10.5].map((ex, i) => {
-          const row = 26 + i;
+          const row = 27 + i;
           return [
             ex,
             ...[1, 2, 3, 4, 5].map(
               (c) =>
-                `=($A${row}*'Operating Model'!$F$3-'Debt Schedule'!$F$26)/(${String.fromCharCode(
+                `=IFERROR(($A${row}*'Operating Model'!$F$3-'Debt Schedule'!$F$27)/(${String.fromCharCode(
                   65 + c,
-                )}$25*'Sources & Uses'!$B$4+'Sources & Uses'!$B$8-SUM('Sources & Uses'!$C$12:$C$15))`,
+                )}$26*'Sources & Uses'!$B$4+'Sources & Uses'!$B$8-SUM('Sources & Uses'!$C$12:$C$15)),0)`,
             ),
           ];
         }),
