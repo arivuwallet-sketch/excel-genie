@@ -358,7 +358,7 @@ export const QUANT_TEMPLATES: FinancialTemplate[] = [
         [],
         ["COVER RATIOS"],
         ["DSCR actual", "=IFERROR(B7/(B18+B19),0)", "=IFERROR(C7/(C18+C19),0)", "=IFERROR(D7/(D18+D19),0)", "=IFERROR(E7/(E18+E19),0)", "=IFERROR(F7/(F18+F19),0)", "=IFERROR(G7/(G18+G19),0)"],
-        ["Min DSCR", "=MIN(B22:G22)"],
+        ["Min DSCR", "=MIN(B23:G23)"],
       ]),
       S("Audit", [
         ["PROJECT FINANCE CHECKS"],
