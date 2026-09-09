@@ -25,6 +25,33 @@ function formulaColor(f: string) {
   return FORMULA_BLACK;
 }
 
+const CURRENCY_FMT = "$#,##0;($#,##0);-";
+const PERCENT_FMT = "0.0%;(0.0%);-";
+const MULTIPLE_FMT = '0.00"x";(0.00"x");-';
+const RATIO_FMT = "#,##0.00;(#,##0.00);-";
+const COUNT_FMT = "#,##0;(#,##0);-";
+
+const PERCENT_RE =
+  /(%|\bpct\b|percent|\brate\b|rates\b|margin|growth|retention|churn|yield|irr|wacc|cagr|cost of (equity|debt|capital)|tax rate|discount rate|utili[sz]ation|occupancy|allocation|weight|share of|contribution|payout|escalat|inflation|attrition|conversion|uplift|premium %|spread)/i;
+const MULTIPLE_RE =
+  /(multiple|moic|\bx\b|ev\/|p\/e|ebitda\/|turnover|dscr|llcr|coverage|\bbeta\b|\bratio\b|current ratio|quick ratio|magic number|leverage)/i;
+const COUNT_RE =
+  /(count|number of|#|headcount|units|qty|quantity|days|periods|employees|customers|logos|shares outstanding|iterations)/i;
+
+/** Decide the number format for a cell from its row label and column header. */
+function pickFormat(rowLabel: string, colHeader: string, raw: string, value: number | null) {
+  const ctx = `${rowLabel} ${colHeader}`;
+  if (raw.includes("%") || PERCENT_RE.test(ctx)) return PERCENT_FMT;
+  if (MULTIPLE_RE.test(ctx)) return MULTIPLE_FMT;
+  if (COUNT_RE.test(ctx)) return COUNT_FMT;
+  // A bare fraction that is clearly not money (e.g. 0.24, 1.35) reads better as a ratio.
+  if (value !== null && Math.abs(value) > 0 && Math.abs(value) < 1) return PERCENT_FMT;
+  if (value !== null && !Number.isInteger(value) && Math.abs(value) < 100 && !/\$/.test(raw))
+    return RATIO_FMT;
+  return CURRENCY_FMT;
+}
+
+
 /** Export sheets to a styled, formula-driven .xlsx and trigger a download. */
 export async function downloadStyledWorkbook(sheets: Sheet[], filename = "sheetsmith") {
   const ExcelJS = (await import("exceljs")).default;
