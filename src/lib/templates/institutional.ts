@@ -329,9 +329,8 @@ export const INSTITUTIONAL_TEMPLATES: FinancialTemplate[] = [
         ["Ballast bunkers", "=-B4*Assumptions!$B$15*Assumptions!$B$12"],
         ["Port bunkers (MGO)", "=-B5*Assumptions!$B$18*Assumptions!$B$13"],
         ["Port disbursements", "=-Assumptions!$B$19"],
-        ["Canal tolls", "=-Assumptions!$B$20*0", "(toll cell links to driver below)"],
-        ["Canal toll cost", "=-Assumptions!$B$19*0+-310000*0-Assumptions!$B$19*0"],
-        ["Total voyage costs", "=SUM(B14:B17)"],
+        ["Canal tolls", "=-Assumptions!$B$21"],
+        ["Total voyage costs", "=SUM(B14:B18)"],
         [],
         ["RESULT"],
         ["Voyage profit", "=B11+B19"],
@@ -340,7 +339,13 @@ export const INSTITUTIONAL_TEMPLATES: FinancialTemplate[] = [
         [],
         ["FREIGHT RATE SENSITIVITY (TCE $/day)"],
         ["Rate $/mt", 22, 25, 28.5, 32, 36],
-        ["TCE", "=IFERROR((Assumptions!$B$6*B26*(1-Assumptions!$B$20)+$B$19)/$B$6,0)", "=IFERROR((Assumptions!$B$6*C26*(1-Assumptions!$B$20)+$B$19)/$B$6,0)", "=IFERROR((Assumptions!$B$6*D26*(1-Assumptions!$B$20)+$B$19)/$B$6,0)", "=IFERROR((Assumptions!$B$6*E26*(1-Assumptions!$B$20)+$B$19)/$B$6,0)", "=IFERROR((Assumptions!$B$6*F26*(1-Assumptions!$B$20)+$B$19)/$B$6,0)"],
+        [
+          "TCE",
+          ...["B", "C", "D", "E", "F"].map(
+            (c) =>
+              `=IFERROR((Assumptions!$B$6*${c}$25*(1-Assumptions!$B$20)+$B$19)/$B$6,0)`,
+          ),
+        ],
       ]),
       S("Audit", [
         ["INSTITUTIONAL CHECK BLOCK"],
