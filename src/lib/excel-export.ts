@@ -1,4 +1,4 @@
-import type { Sheet } from "./spreadsheet";
+import { sanitizeSheetName, stripIllegalXmlChars, type Sheet } from "./spreadsheet";
 
 /** Industry-standard modelling colours. */
 const INPUT_BLUE = "FF0000FF";
@@ -51,16 +51,18 @@ function pickFormat(rowLabel: string, colHeader: string, raw: string, value: num
   return CURRENCY_FMT;
 }
 
-
-/** Export sheets to a styled, formula-driven .xlsx and trigger a download. */
-export async function downloadStyledWorkbook(sheets: Sheet[], filename = "sheetsmith") {
+/** Build the styled, formula-driven workbook. Pure — no browser APIs — so it's directly testable. */
+export async function buildStyledWorkbook(sheets: Sheet[]) {
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
   wb.creator = "SheetSmith";
   wb.created = new Date();
 
-  for (const sheet of sheets) {
-    const ws = wb.addWorksheet(sheet.name.slice(0, 31) || "Sheet1", {
+  const safeSheets = sheets.length > 0 ? sheets : [{ name: "Sheet1", rows: [["No data"]] }];
+  const usedNames = new Set<string>();
+
+  for (const sheet of safeSheets) {
+    const ws = wb.addWorksheet(sanitizeSheetName(sheet.name, usedNames), {
       views: [{ state: "frozen", ySplit: 1 }],
     });
 
@@ -69,24 +71,23 @@ export async function downloadStyledWorkbook(sheets: Sheet[], filename = "sheets
     sheet.rows.forEach((row, r) => {
       const target = ws.getRow(r + 1);
       for (let c = 0; c < width; c++) {
-        const raw = row[c] ?? "";
+        const raw = stripIllegalXmlChars(row[c] ?? "");
         const cell = target.getCell(c + 1);
         cell.font = { name: "Arial", size: 10 };
+        const colHeader = String(sheet.rows[1]?.[c] ?? "");
 
-        if (raw.startsWith("=")) {
+        if (raw.startsWith("=") && raw.slice(1).trim()) {
           cell.value = { formula: raw.slice(1) };
           cell.font = { ...cell.font, color: { argb: formulaColor(raw) } };
-          cell.numFmt = raw.includes("%") ? "0.0%" : "$#,##0;($#,##0);-";
+          cell.numFmt = pickFormat(row[0] ?? "", colHeader, raw, null);
           cell.alignment = { horizontal: "right" };
         } else if (isNumeric(raw)) {
           const n = toNumber(raw);
           cell.value = n ?? raw;
           cell.font = { ...cell.font, color: { argb: INPUT_BLUE } };
-          cell.numFmt = raw.trim().endsWith("%")
-            ? "0.0%"
-            : /^\d{4}$/.test(raw.trim())
-              ? "@"
-              : "$#,##0;($#,##0);-";
+          cell.numFmt = /^\d{4}$/.test(raw.trim())
+            ? "@" // a bare 4-digit number (e.g. a year) reads better as text than as currency
+            : pickFormat(row[0] ?? "", colHeader, raw, n);
           cell.alignment = { horizontal: "right" };
         } else {
           cell.value = raw;
@@ -115,6 +116,12 @@ export async function downloadStyledWorkbook(sheets: Sheet[], filename = "sheets
     }
   }
 
+  return wb;
+}
+
+/** Export sheets to a styled, formula-driven .xlsx and trigger a download. */
+export async function downloadStyledWorkbook(sheets: Sheet[], filename = "sheetsmith") {
+  const wb = await buildStyledWorkbook(sheets);
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

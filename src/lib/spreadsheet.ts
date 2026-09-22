@@ -82,7 +82,12 @@ export async function parseFile(file: File): Promise<Sheet[]> {
 
   if (ext === "csv" || ext === "txt" || ext === "prn") {
     const text = await file.text();
-    return [{ name: file.name.replace(/\.[^.]+$/, "").slice(0, 28) || "Sheet1", rows: parseDelimited(text) }];
+    return [
+      {
+        name: file.name.replace(/\.[^.]+$/, "").slice(0, 28) || "Sheet1",
+        rows: parseDelimited(text),
+      },
+    ];
   }
 
   const buf = await file.arrayBuffer();
@@ -142,12 +147,50 @@ function stripRtf(rtf: string) {
     .trim();
 }
 
+/**
+ * Excel worksheet names: at most 31 chars, none of : \ / ? * [ ], never blank, and unique within the
+ * workbook (case-insensitive). `used` tracks lowercased names already assigned across one export.
+ */
+export function sanitizeSheetName(raw: string, used: Set<string>, fallback = "Sheet"): string {
+  let base = raw
+    .replace(/[:\\/?*[\]]/g, " ")
+    .replace(/^'+|'+$/g, "")
+    .trim();
+  if (!base) base = fallback;
+  base = base.slice(0, 31);
+
+  let candidate = base;
+  let n = 2;
+  while (used.has(candidate.toLowerCase())) {
+    const suffix = ` ${n}`;
+    candidate = `${base.slice(0, Math.max(1, 31 - suffix.length))}${suffix}`;
+    n += 1;
+  }
+  used.add(candidate.toLowerCase());
+  return candidate;
+}
+
+/**
+ * Strip characters that are illegal in XML 1.0 (control characters other than tab/LF/CR, plus the
+ * non-characters U+FFFE/U+FFFF). Stray control characters in AI-generated text are a classic cause of
+ * Excel's "we found a problem with some content" repair dialog.
+ */
+export function stripIllegalXmlChars(s: string): string {
+  // eslint-disable-next-line no-control-regex -- deliberately matching illegal XML control chars
+  return s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, "");
+}
+
 export function sheetsToWorkbook(sheets: Sheet[]): XLSX.WorkBook {
   const wb = XLSX.utils.book_new();
+  const usedNames = new Set<string>();
   sheets.forEach((sheet, index) => {
-    const ws = XLSX.utils.aoa_to_sheet(
-      sheet.rows.map((row) => row.map((cell) => (cell.startsWith("=") ? { f: cell.slice(1) } : cell))),
+    const clean = sheet.rows.map((row) =>
+      row.map((cell) => {
+        const c = stripIllegalXmlChars(cell);
+        return c.startsWith("=") && c.slice(1).trim() ? { f: c.slice(1) } : c;
+      }),
     );
+    const ws = XLSX.utils.aoa_to_sheet(clean);
     const widths = (sheet.rows[0] ?? []).map((_, c) => ({
       wch: Math.min(
         40,
@@ -155,7 +198,11 @@ export function sheetsToWorkbook(sheets: Sheet[]): XLSX.WorkBook {
       ),
     }));
     ws["!cols"] = widths;
-    XLSX.utils.book_append_sheet(wb, ws, (sheet.name || `Sheet${index + 1}`).slice(0, 31));
+    XLSX.utils.book_append_sheet(
+      wb,
+      ws,
+      sanitizeSheetName(sheet.name, usedNames, `Sheet${index + 1}`),
+    );
   });
   return wb;
 }
