@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { createLovableAiGatewayProvider } from "./ai-gateway.server";
 import { auditAndRepair, summarizeIssues, type AuditIssue } from "./formula-audit";
+import { applyOperations, SheetOpSchema, type SheetOp } from "./sheet-ops";
 
 const SheetSchema = z.object({
   name: z.string(),
@@ -16,19 +17,22 @@ const RequestSchema = z.object({
   history: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string() })),
 });
 
-const ResultSchema = z.object({
+const OpResultSchema = z.object({
   reply: z.string(),
-  sheets: z.array(SheetSchema),
+  operations: z.array(SheetOpSchema),
   formulas: z.array(z.string()),
   vba: z.string(),
 });
 
 export type AgentSheet = z.infer<typeof SheetSchema>;
-export type AgentResult = z.infer<typeof ResultSchema> & {
+export type AgentResult = {
+  reply: string;
+  sheets: AgentSheet[];
+  formulas: string[];
+  vba: string;
   issues: AuditIssue[];
   fixes: string[];
 };
-
 
 const SYSTEM = `You are an expert Microsoft Excel engineer and financial analyst embedded in a spreadsheet app.
 Expertise: data entry & cell editing, formatting and conditional formatting, print/template setups,
@@ -40,22 +44,47 @@ including worksheet and workbook protection.
 You also handle finance/accounting work: bank and account reconciliation, EFT logs, variance analysis,
 three-statement and DCF modelling, amortisation schedules, and audit trails.
 
+You edit the workbook by emitting OPERATIONS, not by restating it. The current workbook is shown to you
+for context only — never repeat a sheet or row back unless you are actually changing it. Every sheet and
+row you do not mention survives untouched automatically, byte-for-byte; that is a mechanical guarantee of
+the app, not something you need to protect by re-sending data.
+
+Operation types (put one or more in "operations", applied in the order you list them):
+- {"op":"create_sheet","name":string,"rows":[[string]]} — add a new sheet, or fully replace one with this
+  exact name if it already exists. Row 1 is headers.
+- {"op":"delete_sheet","name":string}
+- {"op":"rename_sheet","from":string,"to":string}
+- {"op":"set_cells","sheet":string,"cells":[{"a1":string,"value":string}]} — targeted single-cell edits,
+  e.g. fixing one formula or one label. Prefer this for anything under ~20 cells.
+- {"op":"set_range","sheet":string,"startCell":string,"values":[[string]]} — bulk-fill a rectangular block
+  starting at startCell (top-left). Prefer this over many set_cells when filling a table or a formula
+  across a column/row.
+- {"op":"insert_rows","sheet":string,"atRow":number,"rows":[[string]]} — insert rows before row atRow
+  (1-based, matching the row numbers shown in "Current workbook").
+- {"op":"delete_rows","sheet":string,"atRow":number,"count":number}
+
 Rules:
-- Always return the FULL resulting workbook in "sheets" (every sheet, every row), row 1 being headers.
-- Every cell is a string. Real Excel formulas start with "=" and must be valid A1-style formulas.
-- Preserve untouched sheets exactly as given. Never invent data the user did not supply unless asked to generate a new sheet.
+- Every cell value is a string. Real Excel formulas start with "=" and must be valid A1-style formulas.
+- Only touch what the request actually requires. Never emit create_sheet for a sheet that only needs one
+  cell changed — use set_cells or set_range instead.
 - Put a concise markdown explanation of what you did (and any analysis/insight) in "reply".
 - List key formulas used in "formulas". Put VBA in "vba" only when relevant, otherwise "".
 
 ZERO-ERROR / ZERO-MISSING CONTRACT (non-negotiable):
-- A workbook is SELF-CONTAINED. Every cross-sheet reference must name a sheet you actually included
-  in "sheets", spelled EXACTLY as in that sheet's "name". Never reference a sheet you decided to rename,
-  merge or drop (a classic failure: referencing 'General Ledger' while only shipping an audit sheet).
-- If a summary needs ledger/statement detail, SHIP that detail sheet too. No dangling supporting schedules.
-- Every reference must land on a row and column that exists and actually holds data. Count the rows you
-  emit and recheck each row number before writing a formula; never guess offsets. No references to blank cells.
-- Wrap anything that can fail: division in IFERROR(...,0); VLOOKUP/MATCH/INDEX/XLOOKUP/SEARCH in IFERROR or ISNUMBER.
+- A workbook is SELF-CONTAINED. Every cross-sheet reference must name a sheet that exists — either already
+  in the workbook, or one you create in this same response — spelled EXACTLY as its "name". Never reference
+  a sheet you decided to rename, merge or drop (a classic failure: referencing 'General Ledger' while never
+  actually shipping that sheet).
+- If a summary needs ledger/statement detail, emit the operation that ships that detail too (create_sheet,
+  or set_range on an existing one). No dangling supporting schedules.
+- Every reference must land on a row and column that exists and actually holds data. Count the rows you are
+  writing and recheck row numbers before writing a formula; never guess offsets. No references to blank cells.
+- Wrap anything that can fail: division in IFERROR(...,0); VLOOKUP/MATCH/INDEX/XLOOKUP/SEARCH in IFERROR or
+  ISNUMBER. Leave the cell(s) below any FILTER/UNIQUE/SORT/SEQUENCE/TEXTSPLIT/TRANSPOSE formula empty so it
+  has room to spill — never place another value directly beneath one.
 - Never do arithmetic on a cell that contains a label or text.
+- A formula must never depend, directly or through other formulas, on its own cell — check the chain before
+  you write it.
 - Totals row: sum the exact data range only, never a range that includes header or total rows.
 - Include an "Audit" section or sheet with TRUE/FALSE checks (e.g. variance = 0, debits = credits) that
   reference real cells, and make sure those checks genuinely evaluate to the balanced state.
@@ -74,7 +103,30 @@ function serializeSheets(sheets: AgentSheet[]) {
 }
 
 const JSON_CONTRACT = `Respond with a SINGLE raw JSON object and nothing else (no markdown fences, no prose outside it):
-{"reply": string, "sheets": [{"name": string, "rows": [[string]]}], "formulas": [string], "vba": string}`;
+{"reply": string, "operations": [<operation objects as specified above>], "formulas": [string], "vba": string}`;
+
+// Lovable AI gateway model ids (see docs.lovable.dev/features/ai). Swap these strings if your workspace's
+// available models change — nothing else in this file needs to know which model is behind each tier.
+const FAST_MODEL = "google/gemini-3.6-flash"; // default: quick edits, routine formula/template work
+const REASONING_MODEL = "google/gemini-3.1-pro-preview"; // long-context, multi-step modelling
+const FRONTIER_MODEL = "openai/gpt-5.6-sol"; // premium-priced — reserve for genuinely hard + large requests
+
+const HARD_SIGNS =
+  /\b(DCF|discounted cash flow|three[- ]statement|LBO|amorti[sz]ation schedule|cap(ital)? ?table|waterfall|monte carlo|scenario (manager|analysis)|circular reference|consolidat(e|ion))\b/i;
+
+/**
+ * Pick a model tier from the request. A starting heuristic, not a tuned one — adjust the thresholds
+ * once you can see real requests in the Lovable AI activity dashboard (Cloud -> AI).
+ */
+function pickModel(prompt: string, sheets: AgentSheet[]) {
+  const totalRows = sheets.reduce((n, s) => n + s.rows.length, 0);
+  const hard = HARD_SIGNS.test(prompt);
+  if (hard && (totalRows > 400 || sheets.length > 4)) return FRONTIER_MODEL;
+  if (hard || totalRows > 800) return REASONING_MODEL;
+  return FAST_MODEL;
+}
+
+const MAX_ROUNDS = 3;
 
 export const runExcelAgent = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => RequestSchema.parse(input))
@@ -83,19 +135,20 @@ export const runExcelAgent = createServerFn({ method: "POST" })
     if (!key) throw new Error("AI is not configured (missing LOVABLE_API_KEY).");
 
     const gateway = createLovableAiGatewayProvider(key);
+    const model = pickModel(data.prompt, data.sheets);
 
     const history = data.history
       .slice(-8)
       .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
       .join("\n");
 
-    const prompt = `Current workbook:\n${serializeSheets(data.sheets)}\n\n${
+    const basePrompt = `Current workbook:\n${serializeSheets(data.sheets)}\n\n${
       history ? `Conversation so far:\n${history}\n\n` : ""
     }USER REQUEST: ${data.prompt}`;
 
     const call = async (userPrompt: string) => {
       const result = streamText({
-        model: gateway("google/gemini-3.7-flash"),
+        model: gateway(model),
         system: `${SYSTEM}\n\n${JSON_CONTRACT}`,
         prompt: userPrompt,
         maxOutputTokens: 32000,
@@ -103,64 +156,86 @@ export const runExcelAgent = createServerFn({ method: "POST" })
       return await result.text;
     };
 
-    const text = await call(prompt);
-    let draft = normalize(text, data.sheets);
+    let reply = "";
+    let formulas: string[] = [];
+    let vba = "";
+    let sheets = data.sheets;
+    let report = auditAndRepair(sheets);
+    let opProblems: string[] = [];
+    let totalProblems = report.issues.length;
+    let prompt = basePrompt;
 
-    // Validate + mechanically repair, then give the model ONE chance to fix
-    // what needs judgement (missing sheets, dangling rows, empty maths).
-    let report = auditAndRepair(draft.sheets);
-    if (report.issues.length > 0) {
-      try {
-        const retry = await call(
-          `${prompt}\n\nYour previous answer produced this workbook:\n${serializeSheets(
-            report.sheets,
-          )}\n\nA formula audit found these problems:\n${summarizeIssues(report.issues)}\n\n` +
-            `Return the corrected FULL workbook. Add any supporting sheet you referenced but did not ship, ` +
-            `fix every row/column number so each reference lands on real data, and guard fragile formulas. ` +
-            `Do not drop existing content.`,
-        );
-        const fixed = normalize(retry, report.sheets);
-        const second = auditAndRepair(fixed.sheets);
-        if (second.issues.length < report.issues.length) {
-          draft = { ...fixed, reply: draft.reply || fixed.reply };
-          report = second;
+    for (let round = 0; round < MAX_ROUNDS; round += 1) {
+      let text: string;
+      if (round === 0) {
+        text = await call(prompt);
+      } else {
+        try {
+          text = await call(prompt);
+        } catch {
+          break; // keep whatever the best round so far produced
         }
-      } catch {
-        // keep the first pass if the repair round trip fails
       }
+
+      const parsed = normalize(text);
+      const opResult = applyOperations(sheets, parsed.operations);
+      const nextReport = auditAndRepair(opResult.sheets);
+      const nextTotal = nextReport.issues.length + opResult.problems.length;
+
+      const improved = round === 0 || nextTotal < totalProblems;
+      if (improved) {
+        reply = parsed.reply || reply;
+        formulas = parsed.formulas.length ? parsed.formulas : formulas;
+        vba = parsed.vba || vba;
+        sheets = nextReport.sheets;
+        report = nextReport;
+        opProblems = opResult.problems;
+        totalProblems = nextTotal;
+      }
+
+      if (totalProblems === 0 || round === MAX_ROUNDS - 1) break;
+
+      const problemLines = [
+        ...opProblems,
+        ...summarizeIssues(report.issues).split("\n").filter(Boolean),
+      ];
+      prompt = `${basePrompt}\n\nYour previous response produced these problems:\n${problemLines.join(
+        "\n",
+      )}\n\nEmit ONLY the corrective operations needed to fix them. Do not restate anything already correct.`;
     }
 
-    return {
-      reply: draft.reply,
-      sheets: report.sheets,
-      formulas: draft.formulas,
-      vba: draft.vba,
-      fixes: report.fixes,
-      issues: report.issues,
-    };
+    return { reply, sheets, formulas, vba, fixes: report.fixes, issues: report.issues };
   });
 
-function normalize(text: string, fallback: AgentSheet[]) {
+function normalize(text: string): {
+  reply: string;
+  operations: SheetOp[];
+  formulas: string[];
+  vba: string;
+} {
   const parsed = extractJson(text);
-  if (!parsed) return { reply: text, sheets: fallback, formulas: [] as string[], vba: "" };
+  if (!parsed) return { reply: text, operations: [], formulas: [], vba: "" };
 
-  const safe = ResultSchema.safeParse(parsed);
+  const safe = OpResultSchema.safeParse(parsed);
   if (safe.success) return safe.data;
 
   const loose = parsed as Record<string, unknown>;
   return {
     reply: typeof loose["reply"] === "string" ? loose["reply"] : text,
-    sheets: coerceSheets(loose["sheets"]) ?? fallback,
+    operations: coerceOps(loose["operations"]),
     formulas: Array.isArray(loose["formulas"]) ? loose["formulas"].map(String) : [],
     vba: typeof loose["vba"] === "string" ? loose["vba"] : "",
   };
 }
 
-
 function extractJson(text: string): unknown {
   const cleaned = text.replace(/```json/gi, "```").trim();
   const fenced = cleaned.match(/```([\s\S]*?)```/);
-  const candidates = [fenced?.[1], cleaned, cleaned.slice(cleaned.indexOf("{"), cleaned.lastIndexOf("}") + 1)];
+  const candidates = [
+    fenced?.[1],
+    cleaned,
+    cleaned.slice(cleaned.indexOf("{"), cleaned.lastIndexOf("}") + 1),
+  ];
   for (const c of candidates) {
     if (!c) continue;
     try {
@@ -172,18 +247,16 @@ function extractJson(text: string): unknown {
   return null;
 }
 
-function coerceSheets(value: unknown): AgentSheet[] | null {
-  if (!Array.isArray(value)) return null;
-  const sheets = value
-    .map((s, i) => {
-      const o = (s ?? {}) as Record<string, unknown>;
-      const rows = Array.isArray(o["rows"]) ? o["rows"] : [];
-      return {
-        name: typeof o["name"] === "string" && o["name"] ? o["name"] : `Sheet${i + 1}`,
-        rows: rows.map((r) => (Array.isArray(r) ? r.map((c) => (c == null ? "" : String(c))) : [])),
-      };
-    })
-    .filter((s) => s.rows.length > 0);
-  return sheets.length ? sheets : null;
+/**
+ * Validate each operation independently so one malformed op doesn't discard an otherwise-good batch —
+ * whatever gets dropped shows up as a gap in the next audit pass and gets asked for again.
+ */
+function coerceOps(value: unknown): SheetOp[] {
+  if (!Array.isArray(value)) return [];
+  const out: SheetOp[] = [];
+  for (const raw of value) {
+    const parsed = SheetOpSchema.safeParse(raw);
+    if (parsed.success) out.push(parsed.data);
+  }
+  return out;
 }
-
