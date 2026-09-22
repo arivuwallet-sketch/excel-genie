@@ -4,7 +4,14 @@ export type AuditIssue = {
   sheet: string;
   cell: string;
   formula: string;
-  kind: "missing-sheet" | "out-of-range" | "empty-ref" | "unguarded-division" | "text-in-math";
+  kind:
+    | "missing-sheet"
+    | "out-of-range"
+    | "empty-ref"
+    | "unguarded-division"
+    | "text-in-math"
+    | "circular-ref"
+    | "spill-blocked";
   detail: string;
 };
 
@@ -122,6 +129,7 @@ const rangeOutOfBounds = (sheet: Sheet, r: Ref) => {
 };
 
 const MATH_ONLY = /^=[-+]?[\s$A-Z0-9.!'":,()*/+%-]+$/i;
+const SPILL_FUNC_RE = /^=\s*(FILTER|UNIQUE|SORT|SORTBY|SEQUENCE|TEXTSPLIT|TRANSPOSE)\s*\(/i;
 
 /**
  * Audit a workbook and auto-repair the mechanical problems:
@@ -214,7 +222,20 @@ export function auditAndRepair(input: Sheet[]): AuditReport {
               detail: `${r.text} holds text ("${cellAt(target, r.start.row, r.start.col).slice(0, 24)}"), so the maths cannot resolve.`,
             });
           }
+        }
 
+        // 4. dynamic-array formulas need clear room to spill into
+        if (SPILL_FUNC_RE.test(formula)) {
+          const below = cellAt(sheet, row + 1, col);
+          if (below !== "") {
+            issues.push({
+              sheet: sheet.name,
+              cell: A1(row, col),
+              formula,
+              kind: "spill-blocked",
+              detail: `${A1(row + 1, col)} already holds "${below.slice(0, 24)}", which blocks this dynamic array from spilling (#SPILL!).`,
+            });
+          }
         }
 
         line[col] = formula;
@@ -222,7 +243,72 @@ export function auditAndRepair(input: Sheet[]): AuditReport {
     }
   }
 
-  return { sheets, fixes, issues: dedupe(issues) };
+  const cycleIssues = detectCircularRefs(sheets, byName);
+  return { sheets, fixes, issues: dedupe([...issues, ...cycleIssues]) };
+}
+
+/** Build a dependency graph over single-cell formula references and report reference cycles. */
+function detectCircularRefs(sheets: Sheet[], byName: Map<string, Sheet>): AuditIssue[] {
+  type Node = { sheet: string; cell: string; formula: string };
+  const nodes = new Map<string, Node>();
+  const edges = new Map<string, Set<string>>();
+
+  for (const sheet of sheets) {
+    for (let row = 0; row < sheet.rows.length; row += 1) {
+      const line = sheet.rows[row] as string[];
+      for (let col = 0; col < line.length; col += 1) {
+        const formula = (line[col] ?? "").trim();
+        if (!formula.startsWith("=")) continue;
+        const key = `${sheet.name}!${A1(row, col)}`;
+        nodes.set(key, { sheet: sheet.name, cell: A1(row, col), formula });
+        const deps = new Set<string>();
+        for (const r of collectRefs(formula)) {
+          if (r.start.row !== r.end.row || r.start.col !== r.end.col) continue; // only single-cell deps form a cycle we can pin down
+          const targetSheetName = r.sheet ? (byName.get(norm(r.sheet))?.name ?? null) : sheet.name;
+          if (!targetSheetName) continue;
+          deps.add(`${targetSheetName}!${A1(r.start.row, r.start.col)}`);
+        }
+        edges.set(key, deps);
+      }
+    }
+  }
+
+  const state = new Map<string, 0 | 1 | 2>(); // 0 = unvisited, 1 = on the current path, 2 = fully explored
+  const issues: AuditIssue[] = [];
+  const stack: string[] = [];
+
+  function visit(key: string) {
+    state.set(key, 1);
+    stack.push(key);
+    for (const dep of edges.get(key) ?? []) {
+      if (!nodes.has(dep)) continue; // dep isn't itself a formula cell, so it can't close a loop
+      const depState = state.get(dep) ?? 0;
+      if (depState === 1) {
+        const cycleStart = stack.indexOf(dep);
+        const chain = [...stack.slice(cycleStart), dep].join(" -> ");
+        const node = nodes.get(key);
+        if (node) {
+          issues.push({
+            sheet: node.sheet,
+            cell: node.cell,
+            formula: node.formula,
+            kind: "circular-ref",
+            detail: `Circular reference: ${chain}`,
+          });
+        }
+      } else if (depState === 0) {
+        visit(dep);
+      }
+    }
+    stack.pop();
+    state.set(key, 2);
+  }
+
+  for (const key of nodes.keys()) {
+    if ((state.get(key) ?? 0) === 0) visit(key);
+  }
+
+  return issues;
 }
 
 /** True when the ref is a direct operand of + - * / ^ (not a comparison or text argument). */
@@ -244,7 +330,6 @@ function isTextCell(value: string) {
   if (/^-?\$?[\d,]+(\.\d+)?\s*(x|bps)$/i.test(value)) return false;
   return true;
 }
-
 
 function escapeRe(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
