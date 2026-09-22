@@ -93,7 +93,7 @@ function similarity(a: string, b: string) {
   const y = norm(b);
   if (!x || !y) return 0;
   if (x === y) return 1;
-  if (x.includes(y) || y.includes(x)) return 0.85;
+  if (x.length >= 4 && y.length >= 4 && (x.includes(y) || y.includes(x))) return 0.85;
   const set = new Set(x.split(""));
   let hits = 0;
   for (const ch of new Set(y.split(""))) if (set.has(ch)) hits += 1;
@@ -106,7 +106,7 @@ function bestSheetMatch(name: string, sheets: Sheet[]) {
     const score = similarity(name, s.name);
     if (!best || score > best.score) best = { name: s.name, score };
   }
-  return best && best.score >= 0.55 ? best.name : null;
+  return best && best.score >= 0.65 ? best.name : null;
 }
 
 const quote = (name: string) => (/^[A-Za-z0-9_]+$/.test(name) ? name : `'${name}'`);
@@ -125,7 +125,8 @@ const isBlankRange = (sheet: Sheet, r: Ref) => {
 
 const rangeOutOfBounds = (sheet: Sheet, r: Ref) => {
   const height = sheet.rows.length;
-  return r.start.row >= height;
+  const width = sheet.rows.reduce((max, row) => Math.max(max, row.length), 0);
+  return r.start.row >= height || r.end.row >= height || r.start.col >= width || r.end.col >= width;
 };
 
 const MATH_ONLY = /^=[-+]?[\s$A-Z0-9.!'":,()*/+%-]+$/i;
