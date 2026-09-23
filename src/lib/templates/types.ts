@@ -1,12 +1,7 @@
 import type { Sheet } from "@/lib/spreadsheet";
 
 export type TemplateTier =
-  | "Basic"
-  | "Intermediate"
-  | "Advanced"
-  | "Quantitative"
-  | "Dashboards"
-  | "Institutional";
+  "Basic" | "Intermediate" | "Advanced" | "Quantitative" | "Dashboards" | "Institutional";
 
 export type FinancialTemplate = {
   id: string;

@@ -57,7 +57,6 @@ export const INTERMEDIATE_TEMPLATES: FinancialTemplate[] = [
         ["CapEx % of revenue", 0.06],
       ]);
 
-
       const bs = S("Balance Sheet", [
         ["BALANCE SHEET ($000s)", ...YEARS],
         ["Cash", ...cols.map((c) => `='Cash Flow'!${c}18`)],
@@ -65,7 +64,10 @@ export const INTERMEDIATE_TEMPLATES: FinancialTemplate[] = [
           "Accounts receivable",
           ...cols.map((c) => `='Income Statement'!${c}3*'Income Statement'!$B$27/365`),
         ],
-        ["Inventory", ...cols.map((c) => `=-'Income Statement'!${c}4*'Income Statement'!$B$28/365`)],
+        [
+          "Inventory",
+          ...cols.map((c) => `=-'Income Statement'!${c}4*'Income Statement'!$B$28/365`),
+        ],
         ["Total current assets", ...cols.map((c) => `=SUM(${c}2:${c}4)`)],
         ["Net PP&E", ...cols.map((c, i) => (i === 0 ? "=8500" : `=${COL(i - 1)}6+${c}7+${c}8`))],
         ["CapEx", ...cols.map((c) => `='Income Statement'!${c}3*'Income Statement'!$B$30`)],
@@ -84,7 +86,9 @@ export const INTERMEDIATE_TEMPLATES: FinancialTemplate[] = [
         [
           "Retained earnings",
           ...cols.map((c, i) =>
-            i === 0 ? `=3200+'Income Statement'!${c}13` : `=${COL(i - 1)}17+'Income Statement'!${c}13`,
+            i === 0
+              ? `=3200+'Income Statement'!${c}13`
+              : `=${COL(i - 1)}17+'Income Statement'!${c}13`,
           ),
         ],
         ["Total equity", ...cols.map((c) => `=${c}16+${c}17`)],
@@ -101,25 +105,33 @@ export const INTERMEDIATE_TEMPLATES: FinancialTemplate[] = [
         [
           "(Increase) in receivables",
           ...cols.map((c, i) =>
-            i === 0 ? `=-'Balance Sheet'!${c}3` : `=-('Balance Sheet'!${c}3-'Balance Sheet'!${COL(i - 1)}3)`,
+            i === 0
+              ? `=-'Balance Sheet'!${c}3`
+              : `=-('Balance Sheet'!${c}3-'Balance Sheet'!${COL(i - 1)}3)`,
           ),
         ],
         [
           "(Increase) in inventory",
           ...cols.map((c, i) =>
-            i === 0 ? `=-'Balance Sheet'!${c}4` : `=-('Balance Sheet'!${c}4-'Balance Sheet'!${COL(i - 1)}4)`,
+            i === 0
+              ? `=-'Balance Sheet'!${c}4`
+              : `=-('Balance Sheet'!${c}4-'Balance Sheet'!${COL(i - 1)}4)`,
           ),
         ],
         [
           "Increase in payables",
           ...cols.map((c, i) =>
-            i === 0 ? `='Balance Sheet'!${c}11` : `='Balance Sheet'!${c}11-'Balance Sheet'!${COL(i - 1)}11`,
+            i === 0
+              ? `='Balance Sheet'!${c}11`
+              : `='Balance Sheet'!${c}11-'Balance Sheet'!${COL(i - 1)}11`,
           ),
         ],
         [
           "Increase in accruals",
           ...cols.map((c, i) =>
-            i === 0 ? `='Balance Sheet'!${c}12` : `='Balance Sheet'!${c}12-'Balance Sheet'!${COL(i - 1)}12`,
+            i === 0
+              ? `='Balance Sheet'!${c}12`
+              : `='Balance Sheet'!${c}12-'Balance Sheet'!${COL(i - 1)}12`,
           ),
         ],
         ["Change in working capital", ...cols.map((c) => `=SUM(${c}4:${c}7)`)],
@@ -143,7 +155,8 @@ export const INTERMEDIATE_TEMPLATES: FinancialTemplate[] = [
     id: "bank-reconciliation",
     name: "Bank Reconciliation Statement",
     tier: "Intermediate",
-    blurb: "Dual-column engine matching bank statements against the general ledger with variance flags.",
+    blurb:
+      "Dual-column engine matching bank statements against the general ledger with variance flags.",
     features: ["Auto matching", "Unmatched flags", "Reconciliation summary", "Variance check"],
     prompt: "Match the bank and ledger sheets, flag unmatched items and explain each difference.",
     build: () => [
@@ -160,7 +173,10 @@ export const INTERMEDIATE_TEMPLATES: FinancialTemplate[] = [
           ["2026-03-23", "EFT-9003", "Customer receipt Globex", 15200],
           ["2026-03-28", "INT-0007", "Interest credit", 96],
           ["2026-03-30", "CHQ-4415", "Rent", -8000],
-        ].map((r, i) => [...r, `=IF(COUNTIF(Ledger!$B$4:$B$12,B${4 + i})>0,"MATCHED","UNMATCHED")`]),
+        ].map((r, i) => [
+          ...r,
+          `=IF(COUNTIF(Ledger!$B$4:$B$12,B${4 + i})>0,"MATCHED","UNMATCHED")`,
+        ]),
         ["Total per bank", "", "", "=SUM(D4:D11)", ""],
       ]),
       S("Ledger", [
@@ -187,19 +203,31 @@ export const INTERMEDIATE_TEMPLATES: FinancialTemplate[] = [
         ["BANK RECONCILIATION STATEMENT"],
         [],
         ["Balance per bank statement", "='Bank Statement'!D12"],
-        ["Add: deposits in transit", "=SUMIFS(Ledger!$D$4:$D$12,Ledger!$E$4:$E$12,\"UNMATCHED\",Ledger!$D$4:$D$12,\">0\")"],
-        ["Less: unpresented cheques", "=SUMIFS(Ledger!$D$4:$D$12,Ledger!$E$4:$E$12,\"UNMATCHED\",Ledger!$D$4:$D$12,\"<0\")"],
+        [
+          "Add: deposits in transit",
+          '=SUMIFS(Ledger!$D$4:$D$12,Ledger!$E$4:$E$12,"UNMATCHED",Ledger!$D$4:$D$12,">0")',
+        ],
+        [
+          "Less: unpresented cheques",
+          '=SUMIFS(Ledger!$D$4:$D$12,Ledger!$E$4:$E$12,"UNMATCHED",Ledger!$D$4:$D$12,"<0")',
+        ],
         ["Adjusted bank balance", "=B3+B4+B5"],
         [],
         ["Balance per general ledger", "=Ledger!D13"],
-        ["Add: bank charges not recorded", "=-SUMIFS('Bank Statement'!$D$4:$D$11,'Bank Statement'!$E$4:$E$11,\"UNMATCHED\",'Bank Statement'!$D$4:$D$11,\"<0\")"],
-        ["Less: interest not recorded", "=-SUMIFS('Bank Statement'!$D$4:$D$11,'Bank Statement'!$E$4:$E$11,\"UNMATCHED\",'Bank Statement'!$D$4:$D$11,\">0\")"],
+        [
+          "Add: bank charges not recorded",
+          "=-SUMIFS('Bank Statement'!$D$4:$D$11,'Bank Statement'!$E$4:$E$11,\"UNMATCHED\",'Bank Statement'!$D$4:$D$11,\"<0\")",
+        ],
+        [
+          "Less: interest not recorded",
+          "=-SUMIFS('Bank Statement'!$D$4:$D$11,'Bank Statement'!$E$4:$E$11,\"UNMATCHED\",'Bank Statement'!$D$4:$D$11,\">0\")",
+        ],
         ["Adjusted ledger balance", "=B8-B9-B10"],
         [],
         ["VARIANCE (must be 0)", "=ROUND(B6-B11,2)"],
         ["Status", '=IF(ABS(B13)<0.01,"RECONCILED","INVESTIGATE")'],
         [],
-        ["Unmatched bank items", '=COUNTIF(\'Bank Statement\'!$E$4:$E$11,"UNMATCHED")'],
+        ["Unmatched bank items", "=COUNTIF('Bank Statement'!$E$4:$E$11,\"UNMATCHED\")"],
         ["Unmatched ledger items", '=COUNTIF(Ledger!$E$4:$E$12,"UNMATCHED")'],
       ]),
     ],
@@ -218,7 +246,18 @@ export const INTERMEDIATE_TEMPLATES: FinancialTemplate[] = [
         ["ACCOUNTS RECEIVABLE AGING"],
         ["As-of", "2026-04-30"],
         [],
-        ["Invoice", "Customer", "Invoice date", "Due date", "Amount", "Terms", "Outstanding", "Days past due", "Bucket", "Risk"],
+        [
+          "Invoice",
+          "Customer",
+          "Invoice date",
+          "Due date",
+          "Amount",
+          "Terms",
+          "Outstanding",
+          "Days past due",
+          "Bucket",
+          "Risk",
+        ],
         ...[
           ["INV-3001", "Northwind Ltd", "2026-03-01", "2026-03-31", 12690, 30, 6690],
           ["INV-3002", "Acme Retail", "2026-02-10", "2026-03-12", 8450, 30, 8450],
@@ -246,7 +285,18 @@ export const INTERMEDIATE_TEMPLATES: FinancialTemplate[] = [
         ["ACCOUNTS PAYABLE AGING"],
         ["As-of", "2026-04-30"],
         [],
-        ["Bill", "Vendor", "Bill date", "Due date", "Amount", "Terms", "Outstanding", "Days past due", "Bucket", "Action"],
+        [
+          "Bill",
+          "Vendor",
+          "Bill date",
+          "Due date",
+          "Amount",
+          "Terms",
+          "Outstanding",
+          "Days past due",
+          "Bucket",
+          "Action",
+        ],
         ...[
           ["BILL-201", "Supplier A", "2026-03-08", "2026-04-07", 34200, 30, 34200],
           ["BILL-202", "CloudHost", "2026-04-01", "2026-05-01", 6450, 30, 6450],
@@ -320,7 +370,17 @@ export const INTERMEDIATE_TEMPLATES: FinancialTemplate[] = [
       S("SKU Plan", [
         ["SKU-LEVEL PLAN"],
         [],
-        ["SKU", "Annual demand", "Unit cost", "On hand", "Lead time", "Safety stock", "Reorder point", "EOQ", "Alert"],
+        [
+          "SKU",
+          "Annual demand",
+          "Unit cost",
+          "On hand",
+          "Lead time",
+          "Safety stock",
+          "Reorder point",
+          "EOQ",
+          "Alert",
+        ],
         ...[
           ["SKU-100", 14400, 18.5, 900, 14],
           ["SKU-101", 9600, 26.0, 240, 21],
@@ -348,7 +408,8 @@ export const INTERMEDIATE_TEMPLATES: FinancialTemplate[] = [
     id: "payroll-headcount",
     name: "Payroll & Headcount Model",
     tier: "Intermediate",
-    blurb: "Department staffing planner calculating base salaries, taxes, benefits and bonus pools.",
+    blurb:
+      "Department staffing planner calculating base salaries, taxes, benefits and bonus pools.",
     features: ["Department tiers", "Employer taxes", "Benefits load", "Bonus pool"],
     prompt: "Add a hiring plan by quarter with fully-loaded cost per new hire.",
     build: () => [
@@ -361,7 +422,16 @@ export const INTERMEDIATE_TEMPLATES: FinancialTemplate[] = [
         ["Bonus pool % of base", 0.1],
         ["Annual merit increase", 0.035],
         [],
-        ["Employee", "Department", "Level", "Base salary", "Payroll tax", "Benefits", "Bonus", "Fully loaded"],
+        [
+          "Employee",
+          "Department",
+          "Level",
+          "Base salary",
+          "Payroll tax",
+          "Benefits",
+          "Bonus",
+          "Fully loaded",
+        ],
         ...[
           ["A. Patel", "Engineering", "Senior", 158000],
           ["J. Kim", "Engineering", "Mid", 122000],
@@ -373,15 +443,18 @@ export const INTERMEDIATE_TEMPLATES: FinancialTemplate[] = [
           ["K. Aluko", "Support", "Junior", 74000],
         ].map((r, i) => {
           const row = 10 + i;
-          return [
-            ...r,
-            `=D${row}*$B$4`,
-            `=D${row}*$B$5`,
-            `=D${row}*$B$6`,
-            `=SUM(D${row}:G${row})`,
-          ];
+          return [...r, `=D${row}*$B$4`, `=D${row}*$B$5`, `=D${row}*$B$6`, `=SUM(D${row}:G${row})`];
         }),
-        ["Total", "", "", "=SUM(D10:D17)", "=SUM(E10:E17)", "=SUM(F10:F17)", "=SUM(G10:G17)", "=SUM(H10:H17)"],
+        [
+          "Total",
+          "",
+          "",
+          "=SUM(D10:D17)",
+          "=SUM(E10:E17)",
+          "=SUM(F10:F17)",
+          "=SUM(G10:G17)",
+          "=SUM(H10:H17)",
+        ],
         [],
         ["Department", "Headcount", "Base", "Fully loaded", "% of total cost"],
         ...["Engineering", "Sales", "G&A", "Marketing", "Support"].map((d, i) => {
@@ -405,14 +478,25 @@ export const INTERMEDIATE_TEMPLATES: FinancialTemplate[] = [
     id: "budget-vs-actual",
     name: "Budget vs Actual Variance Dashboard",
     tier: "Intermediate",
-    blurb: "Forecast vs actual comparison with dollar / percent deviation and conditional alert tags.",
+    blurb:
+      "Forecast vs actual comparison with dollar / percent deviation and conditional alert tags.",
     features: ["$ and % variance", "Favourable/unfavourable", "Alert tags", "Department roll-up"],
     prompt: "Add a driver-based explanation of the three largest unfavourable variances.",
     build: () => [
       S("Variance", [
         ["BUDGET VS ACTUAL — YTD 2026 ($)"],
         [],
-        ["Account", "Type", "Department", "Budget", "Actual", "Variance $", "Variance %", "F/U", "Alert"],
+        [
+          "Account",
+          "Type",
+          "Department",
+          "Budget",
+          "Actual",
+          "Variance $",
+          "Variance %",
+          "F/U",
+          "Alert",
+        ],
         ...[
           ["Product revenue", "Revenue", "Sales", 1850000, 1712000],
           ["Service revenue", "Revenue", "Sales", 420000, 486000],
@@ -433,9 +517,39 @@ export const INTERMEDIATE_TEMPLATES: FinancialTemplate[] = [
           ];
         }),
         [],
-        ["Total revenue", "", "", "=SUMIF($B$4:$B$11,\"Revenue\",$D$4:$D$11)", "=SUMIF($B$4:$B$11,\"Revenue\",$E$4:$E$11)", "=E13-D13", "=F13/D13", "", ""],
-        ["Total cost", "", "", "=SUMIF($B$4:$B$11,\"Cost\",$D$4:$D$11)", "=SUMIF($B$4:$B$11,\"Cost\",$E$4:$E$11)", "=E14-D14", "=F14/D14", "", ""],
-        ["Operating income", "", "", "=D13-D14", "=E13-E14", "=E15-D15", "=F15/D15", '=IF(F15>=0,"Favourable","Unfavourable")', ""],
+        [
+          "Total revenue",
+          "",
+          "",
+          '=SUMIF($B$4:$B$11,"Revenue",$D$4:$D$11)',
+          '=SUMIF($B$4:$B$11,"Revenue",$E$4:$E$11)',
+          "=E13-D13",
+          "=F13/D13",
+          "",
+          "",
+        ],
+        [
+          "Total cost",
+          "",
+          "",
+          '=SUMIF($B$4:$B$11,"Cost",$D$4:$D$11)',
+          '=SUMIF($B$4:$B$11,"Cost",$E$4:$E$11)',
+          "=E14-D14",
+          "=F14/D14",
+          "",
+          "",
+        ],
+        [
+          "Operating income",
+          "",
+          "",
+          "=D13-D14",
+          "=E13-E14",
+          "=E15-D15",
+          "=F15/D15",
+          '=IF(F15>=0,"Favourable","Unfavourable")',
+          "",
+        ],
         [],
         ["Department", "Budget", "Actual", "Variance $", "Variance %", "Flag"],
         ...["Sales", "Ops", "G&A", "Marketing", "Engineering"].map((d, i) => {
@@ -467,7 +581,21 @@ export const INTERMEDIATE_TEMPLATES: FinancialTemplate[] = [
         ["Depreciation method (Straight-Line / Double Declining / MACRS)", "Straight-Line"],
         ["MACRS 5-year rates", 0.2, 0.32, 0.192, 0.1152, 0.1152, 0.0576],
         [],
-        ["Asset", "Category", "In service", "Cost", "Salvage", "Life (yrs)", "Yr 1", "Yr 2", "Yr 3", "Yr 4", "Yr 5", "Accum. dep.", "Net book value"],
+        [
+          "Asset",
+          "Category",
+          "In service",
+          "Cost",
+          "Salvage",
+          "Life (yrs)",
+          "Yr 1",
+          "Yr 2",
+          "Yr 3",
+          "Yr 4",
+          "Yr 5",
+          "Accum. dep.",
+          "Net book value",
+        ],
         ...[
           ["Server cluster", "IT", "2026-01-15", 240000, 20000, 5],
           ["Delivery vans", "Vehicles", "2026-02-01", 165000, 25000, 5],
@@ -476,12 +604,14 @@ export const INTERMEDIATE_TEMPLATES: FinancialTemplate[] = [
           ["Laptops", "IT", "2026-05-20", 58000, 4000, 5],
         ].map((r, i) => {
           const row = 7 + i;
-          const yr = (y: number) =>
-            `=IF($B$3="Straight-Line",($D${row}-$E${row})/$F${row},IF($B$3="MACRS",$D${row}*${String.fromCharCode(
+          const yr = (y: number) => {
+            // Prior-years-only accumulated depreciation for the declining-balance branch — year 1 has no
+            // prior years (0), year y sums columns G..(one before the current year's column).
+            const priorSum = y === 1 ? "0" : `SUM($G${row}:${String.fromCharCode(69 + y)}${row})`;
+            return `=IF($B$3="Straight-Line",($D${row}-$E${row})/$F${row},IF($B$3="MACRS",$D${row}*${String.fromCharCode(
               66 + y - 1,
-            )}$4,MIN(MAX(0,$D${row}-$E${row}-SUM($G${row}:${String.fromCharCode(
-              71 + y - 1,
-            )}${row})),($D${row}-SUM($G${row}:${String.fromCharCode(71 + y - 1)}${row}))*2/$F${row})))`;
+            )}$4,MIN(MAX(0,$D${row}-$E${row}-${priorSum}),($D${row}-${priorSum})*2/$F${row})))`;
+          };
           return [
             ...r,
             ...[1, 2, 3, 4, 5].map((y) => yr(y)),
@@ -489,13 +619,173 @@ export const INTERMEDIATE_TEMPLATES: FinancialTemplate[] = [
             `=D${row}-L${row}`,
           ];
         }),
-        ["Total", "", "", "=SUM(D7:D11)", "=SUM(E7:E11)", "", "=SUM(G7:G11)", "=SUM(H7:H11)", "=SUM(I7:I11)", "=SUM(J7:J11)", "=SUM(K7:K11)", "=SUM(L7:L11)", "=SUM(M7:M11)"],
+        [
+          "Total",
+          "",
+          "",
+          "=SUM(D7:D11)",
+          "=SUM(E7:E11)",
+          "",
+          "=SUM(G7:G11)",
+          "=SUM(H7:H11)",
+          "=SUM(I7:I11)",
+          "=SUM(J7:J11)",
+          "=SUM(K7:K11)",
+          "=SUM(L7:L11)",
+          "=SUM(M7:M11)",
+        ],
         [],
         ["Total CapEx", "=D12"],
         ["Year 1 depreciation expense", "=G12"],
         ["5-year accumulated depreciation", "=L12"],
         ["Closing net book value", "=M12"],
         ["Check: NBV >= salvage", '=IF(M12>=E12,"OK","REVIEW")'],
+      ]),
+    ],
+  },
+  {
+    id: "inventory-cogs-tracker",
+    name: "Inventory & COGS Tracker",
+    tier: "Intermediate",
+    blurb: "Stock levels with reorder alerts, monthly cost of goods sold, and inventory turnover.",
+    features: ["Reorder-point alerts", "Monthly COGS", "Gross margin %", "Inventory turnover"],
+    prompt: "Extend this inventory tracker with a FIFO cost layer table for one SKU.",
+    build: () => [
+      S("Inventory", [
+        ["INVENTORY & COGS TRACKER"],
+        ["Blue cells are inputs. Reorder point triggers the Status flag."],
+        [],
+        [
+          "SKU",
+          "Item",
+          "On Hand",
+          "Reorder Point",
+          "Unit Cost",
+          "Unit Price",
+          "Inventory Value",
+          "Status",
+        ],
+        ["SK-001", "Ceramic Mug", 140, 50, 4.2, 12.99, "=C5*E5", '=IF(C5<=D5,"REORDER","OK")'],
+        ["SK-002", "Tote Bag", 60, 40, 6.5, 18.5, "=C6*E6", '=IF(C6<=D6,"REORDER","OK")'],
+        ["SK-003", "Candle - Vanilla", 25, 30, 3.1, 9.99, "=C7*E7", '=IF(C7<=D7,"REORDER","OK")'],
+        ["SK-004", "Notebook", 210, 75, 1.8, 6.5, "=C8*E8", '=IF(C8<=D8,"REORDER","OK")'],
+        ["Total", "", "=SUM(C5:C8)", "", "", "", "=SUM(G5:G8)", ""],
+      ]),
+      S("COGS", [
+        ["MONTHLY COST OF GOODS SOLD"],
+        [],
+        ["Month", "Units Sold", "Avg Unit Cost", "COGS", "Revenue", "Gross Margin %"],
+        [
+          "Jan",
+          180,
+          "=IFERROR(Inventory!$G$9/Inventory!$C$9,0)",
+          "=B4*C4",
+          3240,
+          "=IFERROR((E4-D4)/E4,0)",
+        ],
+        [
+          "Feb",
+          205,
+          "=IFERROR(Inventory!$G$9/Inventory!$C$9,0)",
+          "=B5*C5",
+          3690,
+          "=IFERROR((E5-D5)/E5,0)",
+        ],
+        [
+          "Mar",
+          190,
+          "=IFERROR(Inventory!$G$9/Inventory!$C$9,0)",
+          "=B6*C6",
+          3420,
+          "=IFERROR((E6-D6)/E6,0)",
+        ],
+        ["Total", "=SUM(B4:B6)", "", "=SUM(D4:D6)", "=SUM(E4:E6)", "=IFERROR((E7-D7)/E7,0)"],
+        [],
+        ["Inventory turnover (annualized)", "=IFERROR((D7*4)/Inventory!$G$9,0)"],
+      ]),
+    ],
+  },
+  {
+    id: "freelance-time-billing",
+    name: "Freelance Time & Billing Tracker",
+    tier: "Intermediate",
+    blurb:
+      "Log billable hours per client/project, roll up into a client summary, and track what's invoiced vs outstanding.",
+    features: ["Time log", "Per-client summary", "Invoiced vs outstanding", "Utilization check"],
+    prompt: "Extend this time & billing tracker with a weekly capacity view across all clients.",
+    build: () => [
+      S("Time Log", [
+        ["FREELANCE TIME & BILLING TRACKER"],
+        ["Log hours per client/project. Blue cells are inputs."],
+        [],
+        ["Date", "Client", "Project", "Hours", "Rate", "Billable Amount", "Invoiced?"],
+        ["2027-01-06", "Acme Co", "Website redesign", 4.5, 85, "=D5*E5", "Yes"],
+        ["2027-01-07", "Acme Co", "Website redesign", 3, 85, "=D6*E6", "Yes"],
+        ["2027-01-08", "Brightline", "Brand refresh", 6, 95, "=D7*E7", "No"],
+        ["2027-01-09", "Acme Co", "Website redesign", 2.5, 85, "=D8*E8", "No"],
+        ["2027-01-10", "Brightline", "Brand refresh", 4, 95, "=D9*E9", "No"],
+        ["Total", "", "", "=SUM(D5:D9)", "", "=SUM(F5:F9)", ""],
+      ]),
+      S("Summary", [
+        ["CLIENT SUMMARY"],
+        [],
+        ["Client", "Hours Logged", "Billable Total", "Invoiced", "Outstanding"],
+        [
+          "Acme Co",
+          "=SUMIF('Time Log'!$B$5:$B$9,A4,'Time Log'!$D$5:$D$9)",
+          "=SUMIF('Time Log'!$B$5:$B$9,A4,'Time Log'!$F$5:$F$9)",
+          "=SUMIFS('Time Log'!$F$5:$F$9,'Time Log'!$B$5:$B$9,A4,'Time Log'!$G$5:$G$9,\"Yes\")",
+          "=C4-D4",
+        ],
+        [
+          "Brightline",
+          "=SUMIF('Time Log'!$B$5:$B$9,A5,'Time Log'!$D$5:$D$9)",
+          "=SUMIF('Time Log'!$B$5:$B$9,A5,'Time Log'!$F$5:$F$9)",
+          "=SUMIFS('Time Log'!$F$5:$F$9,'Time Log'!$B$5:$B$9,A5,'Time Log'!$G$5:$G$9,\"Yes\")",
+          "=C5-D5",
+        ],
+        ["Total", "=SUM(B4:B5)", "=SUM(C4:C5)", "=SUM(D4:D5)", "=SUM(E4:E5)"],
+        [],
+        ["Utilization vs 2-week capacity (80 hrs)", "=IFERROR('Time Log'!$D$10/80,0)"],
+      ]),
+    ],
+  },
+  {
+    id: "recruiting-pipeline",
+    name: "Recruiting Pipeline Tracker",
+    tier: "Intermediate",
+    blurb:
+      "Candidate-by-candidate pipeline with a stage funnel and conversion rates from applied through offer.",
+    features: ["Candidate tracker", "Stage funnel", "Conversion %", "Offer tracking"],
+    prompt: "Extend this recruiting pipeline with average days-in-stage per role.",
+    build: () => [
+      S("Pipeline", [
+        ["RECRUITING PIPELINE TRACKER"],
+        ["One row per candidate. Blue cells are inputs."],
+        [],
+        ["Candidate", "Role", "Stage", "Applied Date", "Offer $"],
+        ["A. Kumar", "Backend Engineer", "Offer", "2027-01-05", 128000],
+        ["J. Silva", "Backend Engineer", "Onsite", "2027-01-10", ""],
+        ["M. Chen", "Product Designer", "Screen", "2027-01-12", ""],
+        ["R. Osei", "Backend Engineer", "Rejected", "2027-01-03", ""],
+        ["T. Novak", "Product Designer", "Applied", "2027-01-15", ""],
+      ]),
+      S("Funnel", [
+        ["STAGE FUNNEL & CONVERSION"],
+        [],
+        ["Stage", "Count", "% of Applied"],
+        ["Applied", "=COUNTA(Pipeline!$A$5:$A$9)", "=B4/$B$4"],
+        [
+          "Screen",
+          '=COUNTIF(Pipeline!$C$5:$C$9,"Screen")+COUNTIF(Pipeline!$C$5:$C$9,"Onsite")+COUNTIF(Pipeline!$C$5:$C$9,"Offer")',
+          "=B5/$B$4",
+        ],
+        [
+          "Onsite",
+          '=COUNTIF(Pipeline!$C$5:$C$9,"Onsite")+COUNTIF(Pipeline!$C$5:$C$9,"Offer")',
+          "=B6/$B$4",
+        ],
+        ["Offer", '=COUNTIF(Pipeline!$C$5:$C$9,"Offer")', "=B7/$B$4"],
       ]),
     ],
   },

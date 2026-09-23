@@ -74,7 +74,6 @@ export const ADVANCED_TEMPLATES: FinancialTemplate[] = [
         ["Terminal method (Gordon / Exit)", "Gordon"],
         ["Diluted shares (000s)", 12500],
         ["Implied value per share", "=IFERROR(B26/B37,0)"],
-
       ]),
       S("Sensitivity", [
         ["SENSITIVITY — ENTERPRISE VALUE"],
@@ -181,7 +180,10 @@ export const ADVANCED_TEMPLATES: FinancialTemplate[] = [
         ["Acquirer net income", "='Deal Assumptions'!B6"],
         ["Target net income", "='Deal Assumptions'!B16"],
         ["Cost synergies (phased)", "='Deal Assumptions'!B28*'Deal Assumptions'!B29"],
-        ["Revenue synergy profit (phased)", "='Deal Assumptions'!B26*'Deal Assumptions'!B27*'Deal Assumptions'!B29"],
+        [
+          "Revenue synergy profit (phased)",
+          "='Deal Assumptions'!B26*'Deal Assumptions'!B27*'Deal Assumptions'!B29",
+        ],
         ["Interest on new debt", "=-'PPA & Goodwill'!B19*'Deal Assumptions'!B22"],
         ["Foregone interest on cash", "=-'PPA & Goodwill'!B18*'Deal Assumptions'!B24"],
         ["Incremental D&A", "=-('PPA & Goodwill'!B14+'PPA & Goodwill'!B16)"],
@@ -202,7 +204,13 @@ export const ADVANCED_TEMPLATES: FinancialTemplate[] = [
         ["Break-even synergies required", "=MAX(0,-B20*B16/(1-'Deal Assumptions'!B23))"],
       ]),
       S("Pro-Forma BS", [
-        ["PRO-FORMA COMBINED BALANCE SHEET ($mm)", "Acquirer", "Target", "Adjustments", "Pro-forma"],
+        [
+          "PRO-FORMA COMBINED BALANCE SHEET ($mm)",
+          "Acquirer",
+          "Target",
+          "Adjustments",
+          "Pro-forma",
+        ],
         ["Cash", 620, 95, "=-'PPA & Goodwill'!B18", "=SUM(B2:D2)"],
         ["Accounts receivable", 480, 130, 0, "=SUM(B3:D3)"],
         ["Inventory", 310, 88, 0, "=SUM(B4:D4)"],
@@ -218,7 +226,13 @@ export const ADVANCED_TEMPLATES: FinancialTemplate[] = [
         ["Equity", "=B8-B13", "=C8-C13", "='PPA & Goodwill'!B20-C14", "=E8-E13"],
         ["Total liabilities & equity", "=B13+B14", "=C13+C14", "=D13+D14", "=E13+E14"],
         [],
-        ["BALANCE CHECK (must be 0)", "=ROUND(B8-B15,2)", "=ROUND(C8-C15,2)", "", "=ROUND(E8-E15,2)"],
+        [
+          "BALANCE CHECK (must be 0)",
+          "=ROUND(B8-B15,2)",
+          "=ROUND(C8-C15,2)",
+          "",
+          "=ROUND(E8-E15,2)",
+        ],
         ["Status", '=IF(ABS(E17)<0.01,"BALANCED","ERROR")'],
       ]),
     ],
@@ -284,28 +298,57 @@ export const ADVANCED_TEMPLATES: FinancialTemplate[] = [
         ["DEBT WATERFALL ($mm)", ...YRS],
         ["SENIOR TERM LOAN A"],
         ["Opening", ...cols.map((c, i) => (i === 0 ? "='Sources & Uses'!C12" : `=${COL(i - 1)}6`))],
-        ["Mandatory amortisation (10%)", ...cols.map((c) => `=-MIN(${c}3,'Sources & Uses'!$C$12*0.1)`)],
-        ["Cash sweep", ...cols.map((c) => `=-MIN(${c}3+${c}4,MAX(0,'Operating Model'!${c}15*'Sources & Uses'!$B$23))`)],
+        [
+          "Mandatory amortisation (10%)",
+          ...cols.map((c) => `=-MIN(${c}3,'Sources & Uses'!$C$12*0.1)`),
+        ],
+        [
+          "Cash sweep",
+          ...cols.map(
+            (c) => `=-MIN(${c}3+${c}4,MAX(0,'Operating Model'!${c}15*'Sources & Uses'!$B$23))`,
+          ),
+        ],
         ["Closing", ...cols.map((c) => `=${c}3+${c}4+${c}5`)],
         ["Interest", ...cols.map((c) => `=AVERAGE(${c}3,${c}6)*'Sources & Uses'!$D$12`)],
         [],
         ["SENIOR TERM LOAN B"],
-        ["Opening", ...cols.map((c, i) => (i === 0 ? "='Sources & Uses'!C13" : `=${COL(i - 1)}13`))],
-        ["Mandatory amortisation (1%)", ...cols.map((c) => `=-MIN(${c}10,'Sources & Uses'!$C$13*0.01)`)],
-        ["Cash sweep", ...cols.map((c) => `=-MIN(${c}10+${c}11,MAX(0,'Operating Model'!${c}15*'Sources & Uses'!$B$23+${c}5))`)],
+        [
+          "Opening",
+          ...cols.map((c, i) => (i === 0 ? "='Sources & Uses'!C13" : `=${COL(i - 1)}13`)),
+        ],
+        [
+          "Mandatory amortisation (1%)",
+          ...cols.map((c) => `=-MIN(${c}10,'Sources & Uses'!$C$13*0.01)`),
+        ],
+        [
+          "Cash sweep",
+          ...cols.map(
+            (c) =>
+              `=-MIN(${c}10+${c}11,MAX(0,'Operating Model'!${c}15*'Sources & Uses'!$B$23+${c}5))`,
+          ),
+        ],
         ["Closing", ...cols.map((c) => `=${c}10+${c}11+${c}12`)],
         ["Interest", ...cols.map((c) => `=AVERAGE(${c}10,${c}13)*'Sources & Uses'!$D$13`)],
         [],
         ["MEZZANINE"],
-        ["Opening", ...cols.map((c, i) => (i === 0 ? "='Sources & Uses'!C14" : `=${COL(i - 1)}18`))],
+        [
+          "Opening",
+          ...cols.map((c, i) => (i === 0 ? "='Sources & Uses'!C14" : `=${COL(i - 1)}18`)),
+        ],
         ["Repayment", ...cols.map(() => 0)],
         ["Closing", ...cols.map((c) => `=${c}17+${c}18`)],
         ["Interest", ...cols.map((c) => `=${c}17*'Sources & Uses'!$D$14`)],
         [],
         ["HIGH YIELD NOTES"],
-        ["Opening", ...cols.map((c, i) => (i === 0 ? "='Sources & Uses'!C15" : `=${COL(i - 1)}23`))],
+        [
+          "Opening",
+          ...cols.map((c, i) => (i === 0 ? "='Sources & Uses'!C15" : `=${COL(i - 1)}23`)),
+        ],
         ["Closing", ...cols.map((c) => `=${c}23`)],
-        ["Total cash interest", ...cols.map((c) => `=${c}7+${c}14+${c}20+${c}23*'Sources & Uses'!$D$15`)],
+        [
+          "Total cash interest",
+          ...cols.map((c) => `=${c}7+${c}14+${c}20+${c}23*'Sources & Uses'!$D$15`),
+        ],
         ["Total mandatory amortisation", ...cols.map((c) => `=-(${c}4+${c}11)`)],
         ["Total debt outstanding", ...cols.map((c) => `=${c}6+${c}13+${c}19+${c}24`)],
         ["Net debt / EBITDA", ...cols.map((c) => `=IFERROR(${c}27/'Operating Model'!${c}3,0)`)],
@@ -389,7 +432,10 @@ export const ADVANCED_TEMPLATES: FinancialTemplate[] = [
           ["MoM growth %", ...mc.map((c, i) => (i === 0 ? "" : `=${c}8/${mc[i - 1]}8-1`))],
           ["Gross revenue retention", ...mc.map((c) => `=(${c}2+${c}5+${c}6)/${c}2`)],
           ["Net revenue retention", ...mc.map((c) => `=(${c}2+${c}4+${c}5+${c}6)/${c}2`)],
-          ["Customers", ...mc.map((c, i) => (i === 0 ? 420 : `=${mc[i - 1]}13*(1-$B$21)+${c}3/$B$22`))],
+          [
+            "Customers",
+            ...mc.map((c, i) => (i === 0 ? 420 : `=${mc[i - 1]}13*(1-$B$21)+${c}3/$B$22`)),
+          ],
           ["ARPA", ...mc.map((c) => `=${c}8/${c}13`)],
           [],
           [],
@@ -436,11 +482,17 @@ export const ADVANCED_TEMPLATES: FinancialTemplate[] = [
               cohort,
               start,
               ...Array.from({ length: 6 }, (_, m) =>
-                m + i > 5 ? "" : `=IF(${m}>=0,(1-'MRR Waterfall'!$B$21+'MRR Waterfall'!$B$19)^${m},"")`,
+                m + i > 5
+                  ? ""
+                  : `=IF(${m}>=0,(1-'MRR Waterfall'!$B$21+'MRR Waterfall'!$B$19)^${m},"")`,
               ),
             ];
           }),
-          ["Blended retention", "=SUM(B4:B9)", ...["C", "D", "E", "F", "G", "H"].map((c) => `=AVERAGE(${c}4:${c}9)`)],
+          [
+            "Blended retention",
+            "=SUM(B4:B9)",
+            ...["C", "D", "E", "F", "G", "H"].map((c) => `=AVERAGE(${c}4:${c}9)`),
+          ],
         ]),
       ];
     },
@@ -469,9 +521,20 @@ export const ADVANCED_TEMPLATES: FinancialTemplate[] = [
         ["Discount rate (WACC)", 0.1, 0.09, 0.12, "=CHOOSE($B$3,B12,C12,D12)"],
         [],
         ["MODEL OUTPUT", "FY2026", "FY2027", "FY2028", "FY2029", "FY2030"],
-        ["Revenue", 24000, ...["C", "D", "E", "F"].map((c, i) => `=${["B", "C", "D", "E"][i]}15*(1+$E$7+$E$10-$E$11)`)],
+        [
+          "Revenue",
+          24000,
+          ...["C", "D", "E", "F"].map(
+            (c, i) => `=${["B", "C", "D", "E"][i]}15*(1+$E$7+$E$10-$E$11)`,
+          ),
+        ],
         ["Gross profit", ...["B", "C", "D", "E", "F"].map((c) => `=${c}15*$E$8`)],
-        ["Operating expenses", ...["B", "C", "D", "E", "F"].map((c, i) => (i === 0 ? `=-${c}15*0.34` : `=${["B", "C", "D", "E"][i - 1]}17*(1+$E$9)`))],
+        [
+          "Operating expenses",
+          ...["B", "C", "D", "E", "F"].map((c, i) =>
+            i === 0 ? `=-${c}15*0.34` : `=${["B", "C", "D", "E"][i - 1]}17*(1+$E$9)`,
+          ),
+        ],
         ["EBIT", ...["B", "C", "D", "E", "F"].map((c) => `=${c}16+${c}17`)],
         ["Free cash flow", ...["B", "C", "D", "E", "F"].map((c) => `=${c}18*0.75`)],
         ["Discount factor", ...["B", "C", "D", "E", "F"].map((c, i) => `=1/(1+$E$12)^${i + 1}`)],
@@ -518,7 +581,12 @@ export const ADVANCED_TEMPLATES: FinancialTemplate[] = [
     tier: "Advanced",
     blurb:
       "Ingest raw csv / pdf / xml / dbf bank exports, normalise them and map into multi-dimensional pivot summaries.",
-    features: ["Staging & mapping", "Normalised fact table", "Pivot summaries", "Data quality checks"],
+    features: [
+      "Staging & mapping",
+      "Normalised fact table",
+      "Pivot summaries",
+      "Data quality checks",
+    ],
     prompt:
       "Map my uploaded raw transaction sheet into this ETL pipeline, normalise the columns and build the pivot summaries.",
     build: () => [
@@ -551,7 +619,18 @@ export const ADVANCED_TEMPLATES: FinancialTemplate[] = [
       S("03 Normalised Fact", [
         ["NORMALISED FACT TABLE"],
         [],
-        ["txn_id", "date", "month", "description", "amount", "direction", "category", "gl_account", "source", "quality"],
+        [
+          "txn_id",
+          "date",
+          "month",
+          "description",
+          "amount",
+          "direction",
+          "category",
+          "gl_account",
+          "source",
+          "quality",
+        ],
         ...Array.from({ length: 8 }, (_, i) => {
           const src = 4 + i;
           const r = 4 + i;
@@ -574,18 +653,24 @@ export const ADVANCED_TEMPLATES: FinancialTemplate[] = [
         ["PIVOT — AMOUNT BY CATEGORY"],
         [],
         ["Category", "Inflow", "Outflow", "Net", "% of gross"],
-        ...["Receipts", "Payables", "Payroll", "Bank charges", "Interest income", "Facilities", "Unmapped"].map(
-          (cat, i) => {
-            const r = 4 + i;
-            return [
-              cat,
-              `=SUMIFS('03 Normalised Fact'!$E$4:$E$11,'03 Normalised Fact'!$G$4:$G$11,A${r},'03 Normalised Fact'!$F$4:$F$11,"Inflow")`,
-              `=SUMIFS('03 Normalised Fact'!$E$4:$E$11,'03 Normalised Fact'!$G$4:$G$11,A${r},'03 Normalised Fact'!$F$4:$F$11,"Outflow")`,
-              `=B${r}+C${r}`,
-              `=IFERROR(ABS(D${r})/SUM(ABS($D$4:$D$10)),0)`,
-            ];
-          },
-        ),
+        ...[
+          "Receipts",
+          "Payables",
+          "Payroll",
+          "Bank charges",
+          "Interest income",
+          "Facilities",
+          "Unmapped",
+        ].map((cat, i) => {
+          const r = 4 + i;
+          return [
+            cat,
+            `=SUMIFS('03 Normalised Fact'!$E$4:$E$11,'03 Normalised Fact'!$G$4:$G$11,A${r},'03 Normalised Fact'!$F$4:$F$11,"Inflow")`,
+            `=SUMIFS('03 Normalised Fact'!$E$4:$E$11,'03 Normalised Fact'!$G$4:$G$11,A${r},'03 Normalised Fact'!$F$4:$F$11,"Outflow")`,
+            `=B${r}+C${r}`,
+            `=IFERROR(ABS(D${r})/SUM(ABS($D$4:$D$10)),0)`,
+          ];
+        }),
         ["Total", "=SUM(B4:B10)", "=SUM(C4:C10)", "=SUM(D4:D10)", "=SUM(E4:E10)"],
         [],
         ["PIVOT — BY SOURCE FILE"],
@@ -603,8 +688,11 @@ export const ADVANCED_TEMPLATES: FinancialTemplate[] = [
         ["DATA QUALITY"],
         ["Rows ingested", "=COUNTA('01 Staging Raw'!A4:A11)"],
         ["Rows normalised", "=COUNTA('03 Normalised Fact'!A4:A11)"],
-        ["Rows needing review", '=COUNTIF(\'03 Normalised Fact\'!$J$4:$J$11,"REVIEW")'],
-        ["Load status", '=IF(B23=B24,IF(B25=0,"CLEAN LOAD","LOADED WITH EXCEPTIONS"),"ROW COUNT MISMATCH")'],
+        ["Rows needing review", "=COUNTIF('03 Normalised Fact'!$J$4:$J$11,\"REVIEW\")"],
+        [
+          "Load status",
+          '=IF(B22=B23,IF(B24=0,"CLEAN LOAD","LOADED WITH EXCEPTIONS"),"ROW COUNT MISMATCH")',
+        ],
       ]),
     ],
   },

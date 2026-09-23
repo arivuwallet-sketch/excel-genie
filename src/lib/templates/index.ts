@@ -26,15 +26,38 @@ export const TIERS: TemplateTier[] = [
   "Institutional",
 ];
 
-export const templatesByTier = (tier: TemplateTier) =>
-  ALL_TEMPLATES.filter((t) => t.tier === tier);
+export const templatesByTier = (tier: TemplateTier) => ALL_TEMPLATES.filter((t) => t.tier === tier);
 
 export const getTemplate = (id: string) => ALL_TEMPLATES.find((t) => t.id === id);
 
 const STOP = new Set([
-  "a", "an", "the", "and", "for", "with", "of", "to", "in", "on", "my", "me", "please",
-  "create", "build", "make", "generate", "give", "need", "want", "new", "sheet", "excel",
-  "spreadsheet", "workbook", "model", "template",
+  "a",
+  "an",
+  "the",
+  "and",
+  "for",
+  "with",
+  "of",
+  "to",
+  "in",
+  "on",
+  "my",
+  "me",
+  "please",
+  "create",
+  "build",
+  "make",
+  "generate",
+  "give",
+  "need",
+  "want",
+  "new",
+  "sheet",
+  "excel",
+  "spreadsheet",
+  "workbook",
+  "model",
+  "template",
 ]);
 
 const tokens = (s: string) =>
