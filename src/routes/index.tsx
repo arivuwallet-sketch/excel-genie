@@ -28,6 +28,7 @@ import {
 import { downloadStyledWorkbook } from "@/lib/excel-export";
 import { runExcelAgent } from "@/lib/excel.functions";
 import { auditAndRepair, type AuditIssue } from "@/lib/formula-audit";
+import { pushToPowerBi } from "@/lib/powerbi.server";
 
 import {
   ACCEPT_ATTR,
@@ -84,6 +85,7 @@ function Index() {
   const [highlightFormulas, setHighlightFormulas] = useState(true);
   const fileRef = useRef<HTMLInputElement>(null);
   const runAgent = useServerFn(runExcelAgent);
+  const pushPowerBi = useServerFn(pushToPowerBi);
 
   const assumptions = useMemo(() => findAssumptions(sheets), [sheets]);
 
@@ -249,6 +251,22 @@ function Index() {
     }
   };
 
+  const pushPowerBiWorkbook = async () => {
+    const id = toast.loading("Pushing to Power BI…");
+    try {
+      const result = await pushPowerBi({ data: { sheets } });
+      toast.dismiss(id);
+      toast.success(
+        `Pushed ${result.rowsPushed} rows across ${result.tablesPushed} table${
+          result.tablesPushed === 1 ? "" : "s"
+        } to "${result.datasetName}"`,
+      );
+    } catch (e) {
+      toast.dismiss(id);
+      toast.error(e instanceof Error ? e.message : "Power BI push failed.");
+    }
+  };
+
   return (
     <div
       className="flex h-screen flex-col overflow-hidden bg-background"
@@ -321,6 +339,9 @@ function Index() {
             >
               Download .csv (active sheet)
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void pushPowerBiWorkbook()}>
+              Push to Power BI
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -328,7 +349,7 @@ function Index() {
           <span
             className={cn("size-2 rounded-full", busy ? "animate-pulse bg-chart-3" : "bg-primary")}
           />
-          Lovable AI · Gemini Flash
+          Lovable AI · auto-routed (Flash / Pro / Astra)
         </Badge>
       </header>
 
