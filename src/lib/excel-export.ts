@@ -8,9 +8,10 @@ const EXTERNAL_RED = "FF8B0000";
 const HEADER_BG = "FF1F3A2E";
 const TITLE_BG = "FFE8F3EC";
 
-const isNumeric = (v: string) => /^-?\(?\$?-?[\d,]+(\.\d+)?\)?%?$/.test(v.trim()) && /\d/.test(v);
+export const isNumeric = (v: string) =>
+  /^-?\(?\$?-?[\d,]+(\.\d+)?\)?%?$/.test(v.trim()) && /\d/.test(v);
 
-function toNumber(v: string): number | null {
+export function toNumber(v: string): number | null {
   const neg = /^\(.*\)$/.test(v.trim());
   const cleaned = v.replace(/[(),$\s]/g, "").replace(/%$/, "");
   const n = Number(cleaned);

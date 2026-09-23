@@ -1,10 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Download, FileSpreadsheet, LayoutTemplate, Plus, Upload, X } from "lucide-react";
+import {
+  BarChart3,
+  Download,
+  FileSpreadsheet,
+  LayoutTemplate,
+  Plus,
+  Upload,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { ChatPanel, type ChatMessage } from "@/components/excel/ChatPanel";
+import { DashboardHub } from "@/components/excel/DashboardHub";
 import { ModelControls, findAssumptions, type Assumption } from "@/components/excel/ModelControls";
 import { SheetGrid } from "@/components/excel/SheetGrid";
 import { TemplateHub } from "@/components/excel/TemplateHub";
@@ -69,6 +78,7 @@ function Index() {
   const [dragging, setDragging] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [hubOpen, setHubOpen] = useState(false);
+  const [dashboardOpen, setDashboardOpen] = useState(false);
   const [scenario, setScenario] = useState("Base");
   const [depreciation, setDepreciation] = useState("Straight-line");
   const [highlightFormulas, setHighlightFormulas] = useState(true);
@@ -87,7 +97,6 @@ function Index() {
     setAudit({ issues: report.issues, fixes: report.fixes });
     toast.success(`Loaded ${next.length} sheet${next.length > 1 ? "s" : ""} from ${label}`);
   }, []);
-
 
   const handleFiles = useCallback(
     async (files: FileList | File[]) => {
@@ -117,7 +126,9 @@ function Index() {
       if (!e.clipboardData) return;
       const image = Array.from(e.clipboardData.items).find((i) => i.type.startsWith("image/"));
       if (image) {
-        toast.info("Pasted image received — describe what to extract and the AI will transcribe it.");
+        toast.info(
+          "Pasted image received — describe what to extract and the AI will transcribe it.",
+        );
         return;
       }
       const parsed = parseClipboard(e.clipboardData);
@@ -288,6 +299,10 @@ function Index() {
           <LayoutTemplate className="size-4" /> Templates
         </Button>
 
+        <Button size="sm" variant="outline" onClick={() => setDashboardOpen(true)}>
+          <BarChart3 className="size-4" /> Dashboard
+        </Button>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button size="sm">
@@ -301,7 +316,9 @@ function Index() {
             <DropdownMenuItem onClick={() => downloadWorkbook(sheets, "xlsx", "sheetsmith")}>
               Download plain .xlsx
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => downloadWorkbook([activeSheet], "csv", activeSheet.name)}>
+            <DropdownMenuItem
+              onClick={() => downloadWorkbook([activeSheet], "csv", activeSheet.name)}
+            >
               Download .csv (active sheet)
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -372,7 +389,6 @@ function Index() {
               vba={vba}
               issues={audit.issues}
               fixes={audit.fixes}
-
             />
           </div>
           <ModelControls
@@ -401,7 +417,13 @@ function Index() {
         onExtend={extendTemplate}
         onPrompt={(text) => void send(text)}
       />
-      
+
+      <DashboardHub
+        open={dashboardOpen}
+        onOpenChange={setDashboardOpen}
+        sheets={sheets}
+        activeIndex={activeIndex}
+      />
 
       {dragging && (
         <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-primary/10 backdrop-blur-sm">
