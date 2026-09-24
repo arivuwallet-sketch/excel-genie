@@ -1,3 +1,4 @@
+import { numericValue } from "./workbook-intelligence";
 import { sanitizeSheetName, stripIllegalXmlChars, type Sheet } from "./spreadsheet";
 
 /** Industry-standard modelling colours. */
@@ -8,17 +9,8 @@ const EXTERNAL_RED = "FF8B0000";
 const HEADER_BG = "FF1F3A2E";
 const TITLE_BG = "FFE8F3EC";
 
-export const isNumeric = (v: string) =>
-  /^-?\(?\$?-?[\d,]+(\.\d+)?\)?%?$/.test(v.trim()) && /\d/.test(v);
-
-export function toNumber(v: string): number | null {
-  const neg = /^\(.*\)$/.test(v.trim());
-  const cleaned = v.replace(/[(),$\s]/g, "").replace(/%$/, "");
-  const n = Number(cleaned);
-  if (!Number.isFinite(n) || cleaned === "") return null;
-  const scaled = v.trim().endsWith("%") ? n / 100 : n;
-  return neg ? -Math.abs(scaled) : scaled;
-}
+export const isNumeric = (v: string) => numericValue(v) !== null;
+export const toNumber = numericValue;
 
 function formulaColor(f: string) {
   if (/\[.+\]/.test(f)) return EXTERNAL_RED; // external workbook reference
@@ -56,6 +48,7 @@ function pickFormat(rowLabel: string, colHeader: string, raw: string, value: num
 export async function buildStyledWorkbook(sheets: Sheet[]) {
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
+  wb.calcProperties.fullCalcOnLoad = true;
   wb.creator = "SheetSmith";
   wb.created = new Date();
 

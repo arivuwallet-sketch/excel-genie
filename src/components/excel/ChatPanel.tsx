@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
@@ -26,6 +27,9 @@ type Props = {
   setInput: (v: string) => void;
   onSend: (prompt?: string) => void;
   busy: boolean;
+  mode: "ask" | "edit"; onMode: (value: "ask" | "edit") => void;
+  quality: "auto" | "fast" | "reasoning"; onQuality: (value: "auto" | "fast" | "reasoning") => void;
+  onCancel: () => void;
   formulas: string[];
   vba: string;
   issues?: { sheet: string; cell: string; kind: string; detail: string }[];
@@ -38,6 +42,7 @@ export function ChatPanel({
   setInput,
   onSend,
   busy,
+  mode, onMode, quality, onQuality, onCancel,
   formulas,
   vba,
   issues = [],
@@ -58,6 +63,10 @@ export function ChatPanel({
         <p className="mt-1 text-xs text-sidebar-foreground/60">
           Describe the spreadsheet work — building, editing, reconciling or auditing.
         </p>
+        <div className="mt-3 flex gap-2">
+          <select aria-label="AI mode" value={mode} onChange={e => onMode(e.target.value as typeof mode)} disabled={busy} className="min-w-0 flex-1 rounded border border-sidebar-border bg-sidebar p-2 text-xs"><option value="edit">Build / edit</option><option value="ask">Ask · read only</option></select>
+          <select aria-label="AI quality" value={quality} onChange={e => onQuality(e.target.value as typeof quality)} disabled={busy} className="min-w-0 flex-1 rounded border border-sidebar-border bg-sidebar p-2 text-xs"><option value="auto">Auto quality</option><option value="fast">Fast</option><option value="reasoning">Reasoning</option></select>
+        </div><p className="mt-2 text-[11px] text-sidebar-foreground/60">Workbook samples and profiles are sent to the configured AI provider when you run a prompt. Proposed edits require review.</p>
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
@@ -90,14 +99,14 @@ export function ChatPanel({
             )}
           >
             <div className="prose prose-sm prose-invert max-w-none prose-p:my-1.5 prose-li:my-0.5 prose-headings:text-sm">
-              <ReactMarkdown>{m.content}</ReactMarkdown>
+              <ReactMarkdown>{m.content}</ReactMarkdown><button type="button" className="mt-2 text-[11px] text-sidebar-foreground/60" onClick={() => void navigator.clipboard.writeText(m.content).then(() => toast.success("Copied"), () => toast.error("Clipboard unavailable"))}>Copy message</button>
             </div>
           </div>
         ))}
 
         {busy && (
           <div className="flex items-center gap-2 rounded-lg bg-sidebar-accent/60 px-3 py-2 text-sm">
-            <Loader2 className="size-4 animate-spin text-sidebar-primary" /> Working the workbook…
+            <Loader2 className="size-4 animate-spin text-sidebar-primary" /> Preparing a proposal… <button type="button" onClick={onCancel} className="ml-auto underline">Stop</button>
           </div>
         )}
 
@@ -194,17 +203,19 @@ export function ChatPanel({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               onSend();
             }
           }}
+          aria-label="Message the spreadsheet assistant"
+          maxLength={12000}
           placeholder="e.g. Reconcile the bank sheet against the ledger and add a variance column"
           className="min-h-[76px] resize-none border-sidebar-border bg-sidebar-accent/40 text-sm text-sidebar-foreground placeholder:text-sidebar-foreground/40"
         />
         <Button onClick={() => onSend()} disabled={busy || !input.trim()} className="mt-2 w-full">
           {busy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
-          Run instruction
+          {mode === "ask" ? "Ask AI" : "Generate proposal"}
         </Button>
       </div>
     </aside>
