@@ -6,6 +6,10 @@ import {
   FileSpreadsheet,
   LayoutTemplate,
   Plus,
+  Redo2,
+  ShieldCheck,
+  TriangleAlert,
+  Undo2,
   Upload,
   X,
 } from "lucide-react";
@@ -19,6 +23,7 @@ import { SheetGrid } from "@/components/excel/SheetGrid";
 import { TemplateHub } from "@/components/excel/TemplateHub";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,6 +34,7 @@ import { downloadStyledWorkbook } from "@/lib/excel-export";
 import { runExcelAgent } from "@/lib/excel.functions";
 import { auditAndRepair, type AuditIssue } from "@/lib/formula-audit";
 import { pushToPowerBi } from "@/lib/powerbi.server";
+import { useUndoableState } from "@/hooks/use-undoable-state";
 
 import {
   ACCEPT_ATTR,
@@ -64,7 +70,7 @@ export const Route = createFileRoute("/")({
 });
 
 function Index() {
-  const [sheets, setSheets] = useState<Sheet[]>([emptySheet()]);
+  const [sheets, setSheets, sheetHistory] = useUndoableState<Sheet[]>([emptySheet()]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -88,17 +94,21 @@ function Index() {
   const pushPowerBi = useServerFn(pushToPowerBi);
 
   const assumptions = useMemo(() => findAssumptions(sheets), [sheets]);
+  const liveIssues = useMemo(() => auditAndRepair(sheets).issues, [sheets]);
 
   const activeSheet = sheets[Math.min(activeIndex, sheets.length - 1)] ?? emptySheet();
 
-  const loadSheets = useCallback((next: Sheet[], label: string) => {
-    const report = auditAndRepair(next);
-    setSheets(report.sheets);
-    setActiveIndex(0);
-    setFileName(label);
-    setAudit({ issues: report.issues, fixes: report.fixes });
-    toast.success(`Loaded ${next.length} sheet${next.length > 1 ? "s" : ""} from ${label}`);
-  }, []);
+  const loadSheets = useCallback(
+    (next: Sheet[], label: string) => {
+      const report = auditAndRepair(next);
+      setSheets(report.sheets);
+      setActiveIndex(0);
+      setFileName(label);
+      setAudit({ issues: report.issues, fixes: report.fixes });
+      toast.success(`Loaded ${next.length} sheet${next.length > 1 ? "s" : ""} from ${label}`);
+    },
+    [setSheets],
+  );
 
   const handleFiles = useCallback(
     async (files: FileList | File[]) => {
@@ -142,6 +152,24 @@ function Index() {
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
   }, [loadSheets]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      if (e.key.toLowerCase() === "z" && !e.shiftKey) {
+        e.preventDefault();
+        sheetHistory.undo();
+      } else if ((e.key.toLowerCase() === "z" && e.shiftKey) || e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        sheetHistory.redo();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [sheetHistory]);
 
   const onCellChange = (row: number, col: number, value: string) => {
     setSheets((prev) =>
@@ -313,6 +341,25 @@ function Index() {
           onChange={(e) => e.target.files && void handleFiles(e.target.files)}
         />
 
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!sheetHistory.canUndo}
+          onClick={() => sheetHistory.undo()}
+          title="Undo (Ctrl/Cmd+Z)"
+        >
+          <Undo2 className="size-4" />
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!sheetHistory.canRedo}
+          onClick={() => sheetHistory.redo()}
+          title="Redo (Ctrl/Cmd+Shift+Z)"
+        >
+          <Redo2 className="size-4" />
+        </Button>
+
         <Button size="sm" variant="outline" onClick={() => setHubOpen(true)}>
           <LayoutTemplate className="size-4" /> Templates
         </Button>
@@ -351,6 +398,43 @@ function Index() {
           />
           Lovable AI · auto-routed (Flash / Pro / Astra)
         </Badge>
+
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              size="sm"
+              variant={liveIssues.length > 0 ? "destructive" : "outline"}
+              className="gap-1.5"
+            >
+              {liveIssues.length > 0 ? (
+                <TriangleAlert className="size-4" />
+              ) : (
+                <ShieldCheck className="size-4" />
+              )}
+              {liveIssues.length > 0
+                ? `${liveIssues.length} issue${liveIssues.length === 1 ? "" : "s"}`
+                : "Audit clean"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-96" align="end">
+            {liveIssues.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No formula issues detected — every reference, division and spill is guarded.
+              </p>
+            ) : (
+              <div className="max-h-80 space-y-2 overflow-auto text-sm">
+                {liveIssues.map((issue, i) => (
+                  <div key={i} className="rounded-md border border-border p-2">
+                    <p className="font-mono text-xs text-muted-foreground">
+                      {issue.sheet}!{issue.cell} · {issue.kind}
+                    </p>
+                    <p>{issue.detail}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
       </header>
 
       <div className="flex min-h-0 flex-1">
