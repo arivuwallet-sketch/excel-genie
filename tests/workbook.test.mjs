@@ -35,3 +35,8 @@ test('backup recovery validates schema and preserves cells and chat', () => { co
 test('normal cross-sheet formulas work but external formulas are blocked', () => { assert.equal(hasUnsafeFormula([{op:'create_sheet',name:'Summary',rows:[["='Sales'!A1"]]}]),false); for(const f of ['=WEBSERVICE("https://example.com")',"='[other.xlsx]S'!A1",'=cmd|x!A1']) assert.equal(hasUnsafeFormula({rows:[[f]]}),true); });
 test('totals including their own cell are flagged', () => { assert.ok(auditAndRepair([{name:'S',rows:[['1'],['=SUM(A1:A2)']]}]).issues.some(i=>i.kind==='circular-ref')); });
 test('10,000-cell dependency chains do not overflow stack', () => { const rows=Array.from({length:10000},(_,i)=>[i===9999?'1':`=A${i+2}`]); assert.equal(auditAndRepair([{name:'S',rows}]).issues.length,0); });
+
+test('large column headers cannot overflow the AI context budget', () => {
+  const sheets=Array.from({length:30},(_,i)=>({name:`S${i}`,rows:[Array(20).fill('x'.repeat(10000)),Array(20).fill('1')]}));
+  assert.ok(workbookContext(sheets).length <= 60000);
+});

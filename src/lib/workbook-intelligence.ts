@@ -80,11 +80,11 @@ export function workbookDiff(before: Sheet[], after: Sheet[], limit = 100) {
 /** Bounded, labelled context. Profiles are full-sheet; rows are explicitly sampled. */
 export function workbookContext(sheets: Sheet[], activeSheet?: string, maxChars = 60000): string {
   const ordered = [...sheets].sort((a, b) => Number(b.name === activeSheet) - Number(a.name === activeSheet));
-  let budget = maxChars;
+  let budget = Math.max(0, maxChars - ordered.length);
   return ordered.map((sheet, index) => {
     const p = profileSheet(sheet);
     const allowance = Math.max(0, Math.floor(budget / (ordered.length - index)));
-    const columns = p.columns.slice(0, Math.max(1, Math.floor(allowance / 700)));
+    const columns = p.columns.slice(0, Math.max(1, Math.floor(allowance / 700))).map(c => ({ ...c, name: c.name.slice(0, 120) }));
     const header = JSON.stringify({ sheet: sheet.name, active: sheet.name === activeSheet, totalRows: sheet.rows.length, ...p, columns, omittedColumnProfiles: p.columns.length - columns.length });
     const indices = [...new Set([0, ...Array.from({ length: Math.min(20, sheet.rows.length) }, (_, i) => i), ...Array.from({ length: 40 }, (_, i) => Math.floor((sheet.rows.length - 1) * i / 39)), ...Array.from({ length: Math.min(10, sheet.rows.length) }, (_, i) => sheet.rows.length - 1 - i)])].filter(i => i >= 0 && i < sheet.rows.length).sort((a, b) => a - b);
     let part = header; let included = 0;
