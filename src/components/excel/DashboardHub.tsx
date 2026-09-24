@@ -35,7 +35,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { isNumeric, toNumber } from "@/lib/excel-export";
+import { detectColumns } from "@/lib/dashboard-columns";
+import { toNumber } from "@/lib/excel-export";
 import type { Sheet } from "@/lib/spreadsheet";
 
 type Props = {
@@ -60,23 +61,6 @@ const PALETTE = [
  * computed when opened in real Excel), so this reads literal numeric inputs only — a formula
  * cell like "=SUM(...)" is not a chartable number here. That's most of a typical data table.
  */
-function detectColumns(sheet: Sheet) {
-  const header = sheet.rows[1] ?? [];
-  const dataRows = sheet.rows.slice(2);
-  const width = header.length || Math.max(1, ...sheet.rows.map((r) => r.length));
-
-  const numericCols: number[] = [];
-  const textCols: number[] = [];
-  for (let c = 0; c < width; c++) {
-    const values = dataRows.map((r) => r[c] ?? "").filter((v) => v !== "");
-    if (values.length === 0) continue;
-    const numericCount = values.filter((v) => isNumeric(v) && !v.trim().startsWith("=")).length;
-    if (numericCount / values.length >= 0.6) numericCols.push(c);
-    else textCols.push(c);
-  }
-  return { header, dataRows, numericCols, textCols };
-}
-
 export function DashboardHub({ open, onOpenChange, sheets, activeIndex }: Props) {
   const [sheetIndex, setSheetIndex] = useState(activeIndex);
   const [kind, setKind] = useState<ChartKind>("bar");
@@ -92,15 +76,20 @@ export function DashboardHub({ open, onOpenChange, sheets, activeIndex }: Props)
 
   const effectiveLabelCol = labelCol ?? textCols[0] ?? 0;
   const effectiveValueCol = valueCol ?? numericCols[0] ?? null;
+  // Only offer text-like columns as the category axis — a formula or numeric column picked here
+  // renders formula text or raw numbers as the pie/bar labels, which is exactly the "collapsed
+  // into nonsense" look this list exists to prevent. Fall back to every column only if the sheet
+  // genuinely has no detected text column at all.
+  const labelOptions = textCols.length > 0 ? textCols : header.map((_, c) => c);
 
   const chartData = useMemo(() => {
     if (effectiveValueCol === null) return [];
     return dataRows
+      .filter((row) => (row[effectiveValueCol] ?? "") !== "")
       .map((row) => ({
         label: String(row[effectiveLabelCol] ?? "").slice(0, 20) || "—",
         value: toNumber(row[effectiveValueCol] ?? "") ?? 0,
       }))
-      .filter((d) => d.label !== "—" || d.value !== 0)
       .slice(0, 25);
   }, [dataRows, effectiveLabelCol, effectiveValueCol]);
 
@@ -151,9 +140,9 @@ export function DashboardHub({ open, onOpenChange, sheets, activeIndex }: Props)
                   <SelectValue placeholder="Category" />
                 </SelectTrigger>
                 <SelectContent>
-                  {header.map((h, c) => (
+                  {labelOptions.map((c) => (
                     <SelectItem key={c} value={String(c)}>
-                      {h || `Column ${c + 1}`}
+                      {header[c] || `Column ${c + 1}`}
                     </SelectItem>
                   ))}
                 </SelectContent>
