@@ -1,5 +1,7 @@
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
+import { MAX_ROWS, MAX_COLS, MAX_CELLS, validateWorkbook } from "./workbook-limits";
+import { numericValue } from "./workbook-intelligence";
 
 export type Sheet = { name: string; rows: string[][] };
 
@@ -37,8 +39,6 @@ export const SUPPORTED_EXT = [
   "slk",
   "dbf",
   "ods",
-  "pdf",
-  "xps",
 ];
 
 export const ACCEPT_ATTR = [...SUPPORTED_EXT, ...UNSUPPORTED_EXT].map((e) => `.${e}`).join(",");
@@ -49,6 +49,7 @@ export function extOf(name: string) {
 
 function normalize(aoa: unknown[][]): string[][] {
   const width = aoa.reduce<number>((max, row) => Math.max(max, row?.length ?? 0), 0);
+  if (aoa.length > MAX_ROWS || width > MAX_COLS || aoa.length * width > MAX_CELLS) throw new Error("Data exceeds supported workbook limits.");
   return aoa.map((row) =>
     Array.from({ length: Math.max(width, 1) }, (_, i) => {
       const v = row?.[i];
@@ -61,13 +62,21 @@ export function workbookToSheets(wb: XLSX.WorkBook): Sheet[] {
   return wb.SheetNames.map((name) => {
     const ws = wb.Sheets[name];
     if (!ws) return { name, rows: [] as string[][] };
+    const bounds = XLSX.utils.decode_range(ws["!ref"] || "A1");
+    if (bounds.e.r >= MAX_ROWS || bounds.e.c >= MAX_COLS || (bounds.e.r + 1) * (bounds.e.c + 1) > MAX_CELLS) throw new Error("Worksheet exceeds supported limits.");
     const aoa = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: false, defval: "" });
-    return { name, rows: normalize(aoa) };
+    const rows = normalize(aoa);
+    for (let r = 0; r < rows.length; r++) for (let c = 0; c < (rows[r]?.length ?? 0); c++) {
+      const cell = ws[XLSX.utils.encode_cell({ r: r + bounds.s.r, c: c + bounds.s.c })];
+      if (cell?.f) rows[r]![c] = `=${cell.f}`;
+    }
+    return { name, rows: [...Array.from({ length: bounds.s.r }, () => [] as string[]), ...rows.map(row => [...Array(bounds.s.c).fill(""), ...row])] };
   }).filter((s) => s.rows.length > 0);
 }
 
 export async function parseFile(file: File): Promise<Sheet[]> {
   const ext = extOf(file.name);
+  if (file.size > 20 * 1024 * 1024) throw new Error("Upload files smaller than 20 MB.");
 
   if (UNSUPPORTED_EXT.includes(ext)) {
     throw new Error(
@@ -75,10 +84,7 @@ export async function parseFile(file: File): Promise<Sheet[]> {
     );
   }
 
-  if (ext === "pdf" || ext === "xps") {
-    const text = await extractPdfText(file);
-    return [{ name: file.name.slice(0, 28), rows: textToRows(text) }];
-  }
+  if (!SUPPORTED_EXT.includes(ext)) throw new Error("Unsupported format. Convert to XLSX or CSV first.");
 
   if (ext === "csv" || ext === "txt" || ext === "prn") {
     const text = await file.text();
@@ -94,34 +100,16 @@ export async function parseFile(file: File): Promise<Sheet[]> {
   const wb = XLSX.read(buf, { type: "array", cellFormula: true, cellStyles: true });
   const sheets = workbookToSheets(wb);
   if (sheets.length === 0) throw new Error("No readable data found in this file.");
+  validateWorkbook(sheets);
   return sheets;
 }
 
 export function parseDelimited(text: string): string[][] {
-  const parsed = Papa.parse<string[]>(text.trim(), { skipEmptyLines: true });
-  return normalize(parsed.data as unknown[][]);
-}
-
-function textToRows(text: string): string[][] {
-  return normalize(text.split(/\r?\n/).map((line) => line.split(/\s{2,}|\t/)));
-}
-
-async function extractPdfText(file: File): Promise<string> {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  // Lightweight text extraction: pull readable ASCII runs out of the document stream.
-  let raw = "";
-  for (let i = 0; i < bytes.length; i++) {
-    const c = bytes[i] ?? 0;
-    raw += c >= 32 && c < 127 ? String.fromCharCode(c) : "\n";
-  }
-  const chunks = raw.match(/\(([^()]{2,})\)/g) ?? [];
-  const text = chunks.map((c) => c.slice(1, -1)).join("\n");
-  if (!text.trim()) {
-    throw new Error(
-      "Couldn't extract text from this document. Try exporting it to .xlsx or .csv, or paste the content into the chat.",
-    );
-  }
-  return text;
+  const parsed = Papa.parse<string[]>(text, { skipEmptyLines: true });
+  if (parsed.errors.some(e => e.code !== "UndetectableDelimiter")) throw new Error("Could not parse delimited data.");
+  const rows = normalize(parsed.data as unknown[][]);
+  validateWorkbook([{ name: "Imported", rows }]);
+  return rows;
 }
 
 /** Parse clipboard payloads: HTML tables, tab-delimited text, RTF or plain text. */
@@ -187,7 +175,7 @@ export function sheetsToWorkbook(sheets: Sheet[]): XLSX.WorkBook {
     const clean = sheet.rows.map((row) =>
       row.map((cell) => {
         const c = stripIllegalXmlChars(cell);
-        return c.startsWith("=") && c.slice(1).trim() ? { f: c.slice(1) } : c;
+        return c.startsWith("=") && c.slice(1).trim() ? { f: c.slice(1) } : (numericValue(c) ?? c);
       }),
     );
     const ws = XLSX.utils.aoa_to_sheet(clean);
@@ -208,6 +196,11 @@ export function sheetsToWorkbook(sheets: Sheet[]): XLSX.WorkBook {
 }
 
 export function downloadWorkbook(sheets: Sheet[], format: "xlsx" | "csv", filename = "analysis") {
+  if (format === "csv") {
+    const csv = Papa.unparse(sheets[0]?.rows ?? [], { escapeFormulae: true });
+    const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
+    const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${filename}.csv`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); return;
+  }
   const wb = sheetsToWorkbook(sheets);
   XLSX.writeFile(wb, `${filename}.${format}`, { bookType: format, compression: true });
 }

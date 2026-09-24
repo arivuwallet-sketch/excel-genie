@@ -46,7 +46,7 @@ function stripLiterals(formula: string) {
 }
 
 const REF_RE =
-  /(?:(?:'([^']*)'|([A-Za-z0-9_]+))!)?(\$?[A-Z]{1,3}\$?\d{1,7})(?::(\$?[A-Z]{1,3}\$?\d{1,7}))?/g;
+  /(?:(?:'((?:[^']|'')*)'|([A-Za-z0-9_]+))!)?(\$?[A-Z]{1,3}\$?\d{1,7})(?::(\$?[A-Z]{1,3}\$?\d{1,7}))?/g;
 
 type Ref = {
   sheet: string | null;
@@ -76,7 +76,7 @@ export function collectRefs(formula: string): Ref[] {
     const end = m[4] ? parseCell(m[4]) : start;
     if (!end) continue;
     out.push({
-      sheet: (m[1] ?? m[2] ?? null) as string | null,
+      sheet: (m[1]?.replace(/''/g, "'") ?? m[2] ?? null) as string | null,
       start,
       end,
       text: m[0],
@@ -86,30 +86,7 @@ export function collectRefs(formula: string): Ref[] {
   return out;
 }
 
-const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-
-function similarity(a: string, b: string) {
-  const x = norm(a);
-  const y = norm(b);
-  if (!x || !y) return 0;
-  if (x === y) return 1;
-  if (x.length >= 4 && y.length >= 4 && (x.includes(y) || y.includes(x))) return 0.85;
-  const set = new Set(x.split(""));
-  let hits = 0;
-  for (const ch of new Set(y.split(""))) if (set.has(ch)) hits += 1;
-  return hits / Math.max(set.size, new Set(y.split("")).size);
-}
-
-function bestSheetMatch(name: string, sheets: Sheet[]) {
-  let best: { name: string; score: number } | null = null;
-  for (const s of sheets) {
-    const score = similarity(name, s.name);
-    if (!best || score > best.score) best = { name: s.name, score };
-  }
-  return best && best.score >= 0.65 ? best.name : null;
-}
-
-const quote = (name: string) => (/^[A-Za-z0-9_]+$/.test(name) ? name : `'${name}'`);
+const norm = (s: string) => s.toLowerCase();
 
 const cellAt = (sheet: Sheet | undefined, row: number, col: number) =>
   (sheet?.rows[row]?.[col] ?? "").trim();
@@ -133,9 +110,8 @@ const MATH_ONLY = /^=[-+]?[\s$A-Z0-9.!'":,()*/+%-]+$/i;
 const SPILL_FUNC_RE = /^=\s*(FILTER|UNIQUE|SORT|SORTBY|SEQUENCE|TEXTSPLIT|TRANSPOSE)\s*\(/i;
 
 /**
- * Audit a workbook and auto-repair the mechanical problems:
- * broken cross-sheet names, and division that can blow up to #DIV/0!.
- * Anything that needs judgement is returned as an issue instead.
+ * Read-only static checks. The legacy name is retained for callers.
+ * No formula is rewritten. This is not a calculation engine.
  */
 export function auditAndRepair(input: Sheet[]): AuditReport {
   const sheets = input.map((s) => ({ name: s.name, rows: s.rows.map((r) => [...r]) }));
@@ -154,40 +130,12 @@ export function auditAndRepair(input: Sheet[]): AuditReport {
 
         // 1. repair references to sheets that do not exist
         const refs = collectRefs(formula);
-        const rewrites = new Map<string, string>();
         for (const r of refs) {
           if (!r.sheet) continue;
           if (byName.has(norm(r.sheet))) continue;
-          const match = bestSheetMatch(r.sheet, sheets);
-          if (match) {
-            rewrites.set(r.sheet, match);
-          } else {
-            issues.push({
-              sheet: sheet.name,
-              cell: A1(row, col),
-              formula,
-              kind: "missing-sheet",
-              detail: `References sheet "${r.sheet}", which is not in this workbook.`,
-            });
-          }
+          issues.push({ sheet: sheet.name, cell: A1(row, col), formula, kind: "missing-sheet", detail: `References missing sheet "${r.sheet}". Select the intended sheet explicitly.` });
         }
-        for (const [from, to] of rewrites) {
-          const pattern = new RegExp(`(?:'${escapeRe(from)}'|${escapeRe(from)})!`, "g");
-          formula = formula.replace(pattern, `${quote(to)}!`);
-          fixes.push(`${at}: re-pointed "${from}" to existing sheet "${to}".`);
-        }
-
-        // 2. guard division and lookups so no #DIV/0! or #N/A cascade
-        if (/\//.test(stripLiterals(formula)) && !/IFERROR|IFNA/i.test(formula)) {
-          formula = `=IFERROR(${formula.slice(1)},0)`;
-          fixes.push(`${at}: wrapped division in IFERROR to stop #DIV/0!.`);
-        } else if (
-          /\b(VLOOKUP|HLOOKUP|MATCH|INDEX|XLOOKUP|SEARCH|FIND)\s*\(/i.test(formula) &&
-          !/IFERROR|IFNA|ISNUMBER|ISERROR|ISNA|IFS?\s*\(/i.test(formula)
-        ) {
-          formula = `=IFERROR(${formula.slice(1)},"")`;
-          fixes.push(`${at}: wrapped lookup in IFERROR to stop #N/A.`);
-        }
+        if (/\//.test(stripLiterals(formula)) && !/IFERROR|IFNA/i.test(formula)) issues.push({ sheet: sheet.name, cell: A1(row, col), formula, kind: "unguarded-division", detail: "Division may fail when the denominator is zero. Decide whether an error or fallback is appropriate." });
 
         // 3. flag references that point at nothing / off the end of a sheet
         for (const r of collectRefs(formula)) {
@@ -239,7 +187,7 @@ export function auditAndRepair(input: Sheet[]): AuditReport {
           }
         }
 
-        line[col] = formula;
+        // Read-only auditing preserves the source formula.
       }
     }
   }
@@ -264,9 +212,12 @@ function detectCircularRefs(sheets: Sheet[], byName: Map<string, Sheet>): AuditI
         nodes.set(key, { sheet: sheet.name, cell: A1(row, col), formula });
         const deps = new Set<string>();
         for (const r of collectRefs(formula)) {
-          if (r.start.row !== r.end.row || r.start.col !== r.end.col) continue; // only single-cell deps form a cycle we can pin down
           const targetSheetName = r.sheet ? (byName.get(norm(r.sheet))?.name ?? null) : sheet.name;
           if (!targetSheetName) continue;
+          if (r.start.row !== r.end.row || r.start.col !== r.end.col) {
+            if (targetSheetName === sheet.name && row >= Math.min(r.start.row, r.end.row) && row <= Math.max(r.start.row, r.end.row) && col >= Math.min(r.start.col, r.end.col) && col <= Math.max(r.start.col, r.end.col)) deps.add(key);
+            continue;
+          }
           deps.add(`${targetSheetName}!${A1(r.start.row, r.start.col)}`);
         }
         edges.set(key, deps);
@@ -278,35 +229,22 @@ function detectCircularRefs(sheets: Sheet[], byName: Map<string, Sheet>): AuditI
   const issues: AuditIssue[] = [];
   const stack: string[] = [];
 
-  function visit(key: string) {
-    state.set(key, 1);
-    stack.push(key);
-    for (const dep of edges.get(key) ?? []) {
-      if (!nodes.has(dep)) continue; // dep isn't itself a formula cell, so it can't close a loop
-      const depState = state.get(dep) ?? 0;
-      if (depState === 1) {
-        const cycleStart = stack.indexOf(dep);
-        const chain = [...stack.slice(cycleStart), dep].join(" -> ");
-        const node = nodes.get(key);
-        if (node) {
-          issues.push({
-            sheet: node.sheet,
-            cell: node.cell,
-            formula: node.formula,
-            kind: "circular-ref",
-            detail: `Circular reference: ${chain}`,
-          });
-        }
-      } else if (depState === 0) {
-        visit(dep);
-      }
+  for (const start of nodes.keys()) {
+    if (state.get(start)) continue;
+    const frames: { key: string; deps: string[]; index: number }[] = [];
+    const enter = (key: string) => { state.set(key, 1); stack.push(key); frames.push({ key, deps: [...(edges.get(key) ?? [])], index: 0 }); };
+    enter(start);
+    while (frames.length) {
+      const frame = frames[frames.length - 1]!;
+      const dep = frame.deps[frame.index++];
+      if (dep === undefined) { state.set(frame.key, 2); stack.pop(); frames.pop(); continue; }
+      if (!nodes.has(dep)) continue;
+      if (state.get(dep) === 1) {
+        const node = nodes.get(frame.key)!;
+        const chain = [...stack.slice(Math.max(stack.indexOf(dep), stack.length - 10)), dep].join(" -> ");
+        issues.push({ sheet: node.sheet, cell: node.cell, formula: node.formula, kind: "circular-ref", detail: `Circular reference: ${chain}` });
+      } else if (!state.get(dep)) enter(dep);
     }
-    stack.pop();
-    state.set(key, 2);
-  }
-
-  for (const key of nodes.keys()) {
-    if ((state.get(key) ?? 0) === 0) visit(key);
   }
 
   return issues;

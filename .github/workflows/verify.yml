@@ -1,0 +1,27 @@
+name: Verify workbook assistant
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+      - name: Workbook regression tests
+        run: npm test
+      - name: Import and export integration tests
+        run: npm run test:integration
+      - name: Type check
+        run: npm run typecheck
+      - name: Production build
+        run: npm run build
