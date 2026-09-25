@@ -19,11 +19,23 @@ import { toast } from "sonner";
 import { ChangePreview, type Proposal } from "@/components/excel/ChangePreview";
 import { InsightsPanel } from "@/components/excel/InsightsPanel";
 import { validateWorkbook, MAX_ROWS, MAX_COLS } from "@/lib/workbook-limits";
+import { applyOperations } from "@/lib/workbook-operations";
 import { workbookDiff } from "@/lib/workbook-intelligence";
-import { WORKSPACE_KEY, parseWorkspace, downloadWorkspace, type Workspace } from "@/lib/workspace-storage";
+import {
+  WORKSPACE_KEY,
+  parseWorkspace,
+  downloadWorkspace,
+  type Workspace,
+} from "@/lib/workspace-storage";
 import { ChatPanel, type ChatMessage } from "@/components/excel/ChatPanel";
 import { DashboardHub } from "@/components/excel/DashboardHub";
-import { ModelControls, findAssumptions, type Assumption } from "@/components/excel/ModelControls";
+import { ModelControls } from "@/components/excel/ModelControls";
+import {
+  findAssumptions,
+  findModelControl,
+  updateModelControl,
+  type Assumption,
+} from "@/lib/model-controls";
 import { SheetGrid } from "@/components/excel/SheetGrid";
 import { TemplateHub } from "@/components/excel/TemplateHub";
 import { Badge } from "@/components/ui/badge";
@@ -85,7 +97,10 @@ function Index() {
   const [autosave, setAutosave] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [saveStatus, setSaveStatus] = useState("Local saving off");
-  const requestId = useRef(0), busyRef = useRef(false), backupRef = useRef<HTMLInputElement>(null);
+  const importId = useRef(0);
+  const requestId = useRef(0),
+    busyRef = useRef(false),
+    backupRef = useRef<HTMLInputElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -101,49 +116,100 @@ function Index() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [hubOpen, setHubOpen] = useState(false);
   const [dashboardOpen, setDashboardOpen] = useState(false);
-  const [scenario, setScenario] = useState("Base");
-  const [depreciation, setDepreciation] = useState("Straight-line");
   const [highlightFormulas, setHighlightFormulas] = useState(true);
   const fileRef = useRef<HTMLInputElement>(null);
   const runAgent = useServerFn(runExcelAgent);
   const pushPowerBi = useServerFn(pushToPowerBi);
 
+  const scenarioControl = findModelControl(sheets, "scenario");
+  const depreciationControl = findModelControl(sheets, "depreciation");
   const assumptions = useMemo(() => findAssumptions(sheets), [sheets]);
   const liveIssues = useMemo(() => auditAndRepair(sheets).issues, [sheets]);
 
-  const activeSheet = sheets[Math.min(activeIndex, sheets.length - 1)] ?? emptySheet();
+  const selectedIndex = Math.min(activeIndex, sheets.length - 1);
+  const activeSheet = sheets[selectedIndex] ?? emptySheet();
 
   useEffect(() => {
     try {
       const saved = localStorage.getItem(WORKSPACE_KEY);
-      if (saved) { const workspace = parseWorkspace(saved); setSheets(workspace.sheets); setMessages(workspace.messages); setFileName(workspace.fileName); setAutosave(true); setSaveStatus("Recovered local workspace"); }
-    } catch { toast.error("Could not restore the local workspace. Import a backup to recover it."); }
-    setHydrated(true); return () => { requestId.current++; };
+      if (saved) {
+        const workspace = parseWorkspace(saved);
+        setSheets(workspace.sheets);
+        setMessages(workspace.messages);
+        setFileName(workspace.fileName);
+        setAutosave(true);
+        setSaveStatus("Recovered local workspace");
+      }
+    } catch {
+      toast.error("Could not restore the local workspace. Import a backup to recover it.");
+    }
+    setHydrated(true);
+    return () => {
+      requestId.current++;
+    };
   }, [setSheets]);
   useEffect(() => {
     if (!hydrated || !autosave) return;
     const timer = window.setTimeout(() => {
       try {
-        const workspace: Workspace = { version: 1, sheets, messages: messages.slice(-100), fileName, savedAt: new Date().toISOString() };
+        const workspace: Workspace = {
+          version: 1,
+          sheets,
+          messages: messages.slice(-100),
+          fileName,
+          savedAt: new Date().toISOString(),
+        };
         const serialized = JSON.stringify(workspace);
         if (serialized.length > 4000000) throw new Error("Workspace too large for local storage");
-        localStorage.setItem(WORKSPACE_KEY, serialized); setSaveStatus("Saved on this device");
-      } catch { setSaveStatus("Save failed — download a backup"); }
-    }, 800); return () => window.clearTimeout(timer);
+        localStorage.setItem(WORKSPACE_KEY, serialized);
+        setSaveStatus("Saved on this device");
+      } catch {
+        setSaveStatus("Save failed — download a backup");
+      }
+    }, 800);
+    return () => window.clearTimeout(timer);
   }, [sheets, messages, fileName, autosave, hydrated]);
-  const stopRequest = () => { requestId.current++; busyRef.current = false; setBusy(false); toast.info("Response stopped. The server request may finish, but its result will not be applied."); };
+  const stopRequest = () => {
+    requestId.current++;
+    busyRef.current = false;
+    setBusy(false);
+    toast.info(
+      "Response stopped. The server request may finish, but its result will not be applied.",
+    );
+  };
   const proposeLocal = (sheet: Sheet, label: string, append = false) => {
     if (busyRef.current || proposal) return;
-    if (!append && sheet.rows.length !== activeSheet.rows.length && sheets.some(sh => sh.rows.some(row => row.some(v => v.startsWith("="))))) { toast.error("Removing rows would change formula references. Use targeted edits or create a summary sheet."); return; }
-    const used = new Set(sheets.map(sh => sh.name.toLowerCase()));
-    const after = append ? [...sheets, { ...sheet, name: sanitizeSheetName(sheet.name, used) }] : sheets.map((sh, i) => i === activeIndex ? sheet : sh);
-    try { validateWorkbook(after); } catch (e) { toast.error(e instanceof Error ? e.message : "Invalid workbook"); return; }
-    setProposal({ before: sheets, after, label }); setMobileView("sheet");
+    if (
+      !append &&
+      sheet.rows.length !== activeSheet.rows.length &&
+      sheets.some((sh) => sh.rows.some((row) => row.some((v) => v.startsWith("="))))
+    ) {
+      toast.error(
+        "Removing rows would change formula references. Use targeted edits or create a summary sheet.",
+      );
+      return;
+    }
+    const used = new Set(sheets.map((sh) => sh.name.toLowerCase()));
+    const after = append
+      ? [...sheets, { ...sheet, name: sanitizeSheetName(sheet.name, used) }]
+      : sheets.map((sh, i) => (i === selectedIndex ? sheet : sh));
+    try {
+      validateWorkbook(after);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Invalid workbook");
+      return;
+    }
+    setProposal({ before: sheets, after, label });
+    setMobileView("sheet");
   };
 
   const loadSheets = useCallback(
     (next: Sheet[], label: string) => {
       validateWorkbook(next);
+      requestId.current++;
+      busyRef.current = false;
+      setBusy(false);
+      setProposal(null);
       const report = auditAndRepair(next);
       setSheets(report.sheets);
       setActiveIndex(0);
@@ -158,6 +224,7 @@ function Index() {
     async (files: FileList | File[]) => {
       const list = Array.from(files);
       if (!list.length) return;
+      const generation = ++importId.current;
       const id = toast.loading(`Parsing ${list[0]?.name ?? "file"}…`);
       try {
         const parsed: Sheet[] = [];
@@ -166,6 +233,7 @@ function Index() {
           parsed.push(...s.map((sh) => ({ ...sh, name: sh.name.slice(0, 31) })));
         }
         toast.dismiss(id);
+        if (generation !== importId.current) return;
         loadSheets(parsed, list.map((f) => f.name).join(", "));
       } catch (e) {
         toast.dismiss(id);
@@ -178,7 +246,11 @@ function Index() {
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      if (
+        target &&
+        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+      )
+        return;
       if (!e.clipboardData) return;
       const image = Array.from(e.clipboardData.items).find((i) => i.type.startsWith("image/"));
       if (image) {
@@ -187,7 +259,15 @@ function Index() {
         );
         return;
       }
-      try { const parsed = parseClipboard(e.clipboardData); if (parsed) { e.preventDefault(); loadSheets(parsed, "clipboard"); } } catch (error) { toast.error(error instanceof Error ? error.message : "Paste failed"); }
+      try {
+        const parsed = parseClipboard(e.clipboardData);
+        if (parsed) {
+          e.preventDefault();
+          loadSheets(parsed, "clipboard");
+        }
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Paste failed");
+      }
     };
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
@@ -196,7 +276,11 @@ function Index() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      if (
+        target &&
+        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+      )
+        return;
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
       if (e.key.toLowerCase() === "z" && !e.shiftKey) {
@@ -212,47 +296,121 @@ function Index() {
   }, [sheetHistory]);
 
   const onRangeChange = (row: number, col: number, values: string[][]) => {
-    if (row + values.length > MAX_ROWS || col + values.reduce((n, r) => Math.max(n, r.length), 0) > MAX_COLS) { toast.error("Paste exceeds workbook limits."); return; }
+    if (
+      row + values.length > MAX_ROWS ||
+      col + values.reduce((n, r) => Math.max(n, r.length), 0) > MAX_COLS
+    ) {
+      toast.error("Paste exceeds workbook limits.");
+      return;
+    }
     const after = sheets.map((sh, i) => {
-      if (i !== activeIndex) return sh;
-      const rows = sh.rows.map(r => [...r]);
-      values.forEach((line, r) => { while (rows.length <= row + r) rows.push([]); const target = rows[row + r]!; while (target.length < col + line.length) target.push(""); line.forEach((value, c) => { target[col + c] = value; }); });
+      if (i !== selectedIndex) return sh;
+      const rows = sh.rows.map((r) => [...r]);
+      values.forEach((line, r) => {
+        while (rows.length <= row + r) rows.push([]);
+        const target = rows[row + r]!;
+        while (target.length < col + line.length) target.push("");
+        line.forEach((value, c) => {
+          target[col + c] = value;
+        });
+      });
       return { ...sh, rows };
     });
-    try { validateWorkbook(after); setSheets(after); } catch (e) { toast.error(e instanceof Error ? e.message : "Invalid edit"); }
-  };
-  const onCellChange = (row: number, col: number, value: string) => onRangeChange(row, col, [[value]]);
-  const send = async (prompt?: string) => {
-    const text = (prompt ?? input).trim(); if (!text || busyRef.current) return;
-    if (proposal) { toast.info("Apply or discard the pending proposal first."); return; }
-    const id = ++requestId.current, before = sheets; busyRef.current = true;
-    setInput(""); setPanel("chat"); setMobileView("assistant"); setMessages(m => [...m, { role: "user", content: text }]); setBusy(true);
     try {
-      const result = await runAgent({ data: { prompt: text, sheets: before, history: messages.slice(-8).map(m => ({ ...m, content: m.content.slice(0, 20000) })), mode, quality, activeSheet: activeSheet.name } });
+      validateWorkbook(after);
+      setSheets(after);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Invalid edit");
+    }
+  };
+  const onCellChange = (row: number, col: number, value: string) =>
+    onRangeChange(row, col, [[value]]);
+  const send = async (prompt?: string) => {
+    const text = (prompt ?? input).trim();
+    if (!text || busyRef.current) return;
+    if (proposal) {
+      toast.info("Apply or discard the pending proposal first.");
+      return;
+    }
+    const id = ++requestId.current,
+      before = sheets;
+    busyRef.current = true;
+    setInput("");
+    setPanel("chat");
+    setMobileView("assistant");
+    setMessages((m) => [...m, { role: "user", content: text }]);
+    setBusy(true);
+    try {
+      const result = await runAgent({
+        data: {
+          prompt: text,
+          sheets: before,
+          history: messages.slice(-8).map((m) => ({ ...m, content: m.content.slice(0, 20000) })),
+          mode,
+          quality,
+          activeSheet: activeSheet.name,
+        },
+      });
       if (id !== requestId.current) return;
-      setFormulas(result.formulas); setVba(result.vba); setAudit({ issues: result.issues, fixes: result.fixes }); setMessages(m => [...m, { role: "assistant", content: result.reply }]);
+      setFormulas(result.formulas);
+      setVba(result.vba);
+      setAudit({ issues: result.issues, fixes: result.fixes });
+      setMessages((m) => [...m, { role: "assistant", content: result.reply }]);
       const diff = workbookDiff(before, result.sheets);
-      if (diff.total || diff.added.length || diff.removed.length) { setProposal({ before, after: result.sheets, label: "AI workbook proposal" }); toast.success("Proposal ready — review before applying"); } else toast.success("Analysis ready");
+      if (diff.total || diff.added.length || diff.removed.length) {
+        setProposal({ before, after: result.sheets, label: "AI workbook proposal" });
+        toast.success("Proposal ready — review before applying");
+      } else toast.success("Analysis ready");
     } catch (e) {
       if (id !== requestId.current) return;
-      const msg = e instanceof Error ? e.message : "The AI request failed."; setMessages(m => [...m, { role: "assistant", content: `**Request failed.** ${msg}` }]); setInput(text); toast.error(msg);
-    } finally { if (id === requestId.current) { busyRef.current = false; setBusy(false); } }
+      const msg = e instanceof Error ? e.message : "The AI request failed.";
+      setMessages((m) => [...m, { role: "assistant", content: `**Request failed.** ${msg}` }]);
+      setInput(text);
+      toast.error(msg);
+    } finally {
+      if (id === requestId.current) {
+        busyRef.current = false;
+        setBusy(false);
+      }
+    }
   };
 
   const addSheet = () => {
-    if (sheets.length >= 30) { toast.error("Maximum 30 sheets."); return; }
-    setSheets(prev => [...prev, emptySheet(sanitizeSheetName(`Sheet${prev.length + 1}`, new Set(prev.map(sh => sh.name.toLowerCase()))))]);
+    if (sheets.length >= 30) {
+      toast.error("Maximum 30 sheets.");
+      return;
+    }
+    setSheets((prev) => [
+      ...prev,
+      emptySheet(
+        sanitizeSheetName(
+          `Sheet${prev.length + 1}`,
+          new Set(prev.map((sh) => sh.name.toLowerCase())),
+        ),
+      ),
+    ]);
     setActiveIndex(sheets.length);
   };
 
   const removeSheet = (index: number) => {
-    if (sheets.length === 1) return;
-    setSheets((prev) => prev.filter((_, i) => i !== index));
+    const target = sheets[index];
+    if (!target || sheets.length === 1) return;
+    const result = applyOperations(sheets, [{ op: "delete_sheet", name: target.name }]);
+    if (result.problems.length) {
+      toast.error(result.problems.join("; "));
+      return;
+    }
+    setSheets(result.sheets);
     setActiveIndex(0);
   };
 
   const loadTemplate = (template: FinancialTemplate) => {
-    try { loadSheets(template.build(), template.name); setHubOpen(false); } catch (error) { toast.error(error instanceof Error ? error.message : "Template failed"); }
+    try {
+      loadSheets(template.build(), template.name);
+      setHubOpen(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Template failed");
+    }
   };
 
   const extendTemplate = (template: FinancialTemplate) => {
@@ -269,20 +427,6 @@ function Index() {
         if (!target) return s;
         while (target.length <= a.col) target.push("");
         target[a.col] = a.isPercent ? `${value}%` : String(value);
-        return { ...s, rows };
-      }),
-    );
-  };
-
-  const setDriverCell = (label: RegExp, value: string) => {
-    setSheets((prev) =>
-      prev.map((s) => {
-        const idx = s.rows.findIndex((r) => label.test((r[0] ?? "").trim()));
-        if (idx === -1) return s;
-        const rows = s.rows.map((r) => [...r]);
-        const target = rows[idx] as string[];
-        while (target.length <= 1) target.push("");
-        target[1] = value;
         return { ...s, rows };
       }),
     );
@@ -359,7 +503,11 @@ function Index() {
           multiple
           accept={ACCEPT_ATTR}
           className="hidden"
-          onChange={(e) => e.target.files && void handleFiles(e.target.files)}
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? []);
+            e.target.value = "";
+            void handleFiles(files);
+          }}
         />
 
         <Button
@@ -440,7 +588,8 @@ function Index() {
           <PopoverContent className="w-96" align="end">
             {liveIssues.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No issues found by the static checks. This is not an Excel calculation engine; validate results in Excel.
+                No issues found by the static checks. This is not an Excel calculation engine;
+                validate results in Excel.
               </p>
             ) : (
               <div className="max-h-80 space-y-2 overflow-auto text-sm">
@@ -459,14 +608,104 @@ function Index() {
       </header>
 
       <div className="flex flex-wrap items-center gap-3 border-b bg-muted/30 px-4 py-2 text-xs">
-        <div className="flex gap-1 lg:hidden"><Button size="sm" variant={mobileView === "sheet" ? "secondary" : "ghost"} onClick={() => setMobileView("sheet")}>Workbook</Button><Button size="sm" variant={mobileView === "assistant" ? "secondary" : "ghost"} onClick={() => setMobileView("assistant")}>Assistant / insights</Button></div>
-        <label className="flex items-center gap-2"><input type="checkbox" checked={autosave} onChange={e => { const enabled = e.target.checked; setAutosave(enabled); if (!enabled) { try { localStorage.removeItem(WORKSPACE_KEY); setSaveStatus("Local saving off"); } catch { setSaveStatus("Could not clear saved copy — clear browser site data"); } } }} />Save on this device</label>
-        <span className="text-muted-foreground" role="status">{saveStatus}</span><button className="underline" onClick={() => downloadWorkspace({ version: 1, sheets, messages, fileName, savedAt: new Date().toISOString() })}>Download backup</button><button className="underline" onClick={() => backupRef.current?.click()}>Restore backup</button>
-        <input type="file" accept=".json" ref={backupRef} className="hidden" onChange={e => { const file = e.target.files?.[0]; if (file) void (async () => { try { if (file.size > 8000000) throw new Error("Backup exceeds 8 MB."); const saved = parseWorkspace(await file.text()); loadSheets(saved.sheets, saved.fileName || "Workspace backup"); setMessages(saved.messages); } catch (error) { toast.error(error instanceof Error ? error.message : "Restore failed"); } })(); e.target.value = ""; }} />
+        <div className="flex gap-1 lg:hidden">
+          <Button
+            size="sm"
+            variant={mobileView === "sheet" ? "secondary" : "ghost"}
+            onClick={() => setMobileView("sheet")}
+          >
+            Workbook
+          </Button>
+          <Button
+            size="sm"
+            variant={mobileView === "assistant" ? "secondary" : "ghost"}
+            onClick={() => setMobileView("assistant")}
+          >
+            Assistant / insights
+          </Button>
+        </div>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={autosave}
+            onChange={(e) => {
+              const enabled = e.target.checked;
+              setAutosave(enabled);
+              if (!enabled) {
+                try {
+                  localStorage.removeItem(WORKSPACE_KEY);
+                  setSaveStatus("Local saving off");
+                } catch {
+                  setSaveStatus("Could not clear saved copy — clear browser site data");
+                }
+              }
+            }}
+          />
+          Save on this device
+        </label>
+        <span className="text-muted-foreground" role="status">
+          {saveStatus}
+        </span>
+        <button
+          className="underline"
+          onClick={() =>
+            downloadWorkspace({
+              version: 1,
+              sheets,
+              messages,
+              fileName,
+              savedAt: new Date().toISOString(),
+            })
+          }
+        >
+          Download backup
+        </button>
+        <button className="underline" onClick={() => backupRef.current?.click()}>
+          Restore backup
+        </button>
+        <input
+          type="file"
+          accept=".json"
+          ref={backupRef}
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file)
+              void (async () => {
+                try {
+                  if (file.size > 8000000) throw new Error("Backup exceeds 8 MB.");
+                  const saved = parseWorkspace(await file.text());
+                  loadSheets(saved.sheets, saved.fileName || "Workspace backup");
+                  setMessages(saved.messages);
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : "Restore failed");
+                }
+              })();
+            e.target.value = "";
+          }}
+        />
       </div>
-      {proposal && <ChangePreview proposal={proposal} stale={sheets !== proposal.before} onDiscard={() => setProposal(null)} onApply={() => { if (sheets !== proposal.before) return; setSheets(proposal.after); setActiveIndex(0); setProposal(null); toast.success("Changes applied. Undo is available."); }} />}
+      {proposal && (
+        <ChangePreview
+          proposal={proposal}
+          stale={sheets !== proposal.before}
+          onDiscard={() => setProposal(null)}
+          onApply={() => {
+            if (sheets !== proposal.before) return;
+            setSheets(proposal.after);
+            setActiveIndex(0);
+            setProposal(null);
+            toast.success("Changes applied. Undo is available.");
+          }}
+        />
+      )}
       <div className="flex min-h-0 flex-1">
-        <main className={cn("min-w-0 flex-1 flex-col lg:flex", mobileView === "sheet" ? "flex" : "hidden")}>
+        <main
+          className={cn(
+            "min-w-0 flex-1 flex-col lg:flex",
+            mobileView === "sheet" ? "flex" : "hidden",
+          )}
+        >
           <div className="min-h-0 flex-1 border-r border-border">
             <SheetGrid
               key={activeSheet.name}
@@ -483,7 +722,7 @@ function Index() {
                 onClick={() => setActiveIndex(i)}
                 className={cn(
                   "group flex cursor-pointer items-center gap-1 rounded-t-md border border-b-0 border-border px-3 py-1 text-xs",
-                  i === activeIndex
+                  i === selectedIndex
                     ? "bg-card font-semibold text-primary"
                     : "bg-transparent text-muted-foreground hover:text-foreground",
                 )}
@@ -512,40 +751,81 @@ function Index() {
           </div>
         </main>
 
-        <div className={cn("w-full shrink-0 flex-col overflow-hidden lg:flex lg:w-[24rem]", mobileView === "assistant" ? "flex" : "hidden")}>
-          <div className="flex shrink-0 gap-1 border-b bg-card p-2"><Button size="sm" variant={panel === "chat" ? "secondary" : "ghost"} onClick={() => setPanel("chat")}>AI chat</Button><Button size="sm" variant={panel === "insights" ? "secondary" : "ghost"} onClick={() => setPanel("insights")}>Data insights</Button></div>
-          {panel === "insights" ? <div className="min-h-0 flex-1 overflow-auto"><InsightsPanel sheet={activeSheet} onPropose={proposeLocal} onAsk={text => { setMode("ask"); setInput(text); setPanel("chat"); }} disabled={busy || !!proposal} /></div> : <>
-
-          <div className="min-h-0 flex-1">
-            <ChatPanel
-              messages={messages}
-              input={input}
-              setInput={setInput}
-              onSend={send}
-              busy={busy}
-              mode={mode} onMode={setMode} quality={quality} onQuality={setQuality} onCancel={stopRequest}
-              formulas={formulas}
-              vba={vba}
-              issues={audit.issues}
-              fixes={audit.fixes}
-            />
+        <div
+          className={cn(
+            "w-full shrink-0 flex-col overflow-hidden lg:flex lg:w-[24rem]",
+            mobileView === "assistant" ? "flex" : "hidden",
+          )}
+        >
+          <div className="flex shrink-0 gap-1 border-b bg-card p-2">
+            <Button
+              size="sm"
+              variant={panel === "chat" ? "secondary" : "ghost"}
+              onClick={() => setPanel("chat")}
+            >
+              AI chat
+            </Button>
+            <Button
+              size="sm"
+              variant={panel === "insights" ? "secondary" : "ghost"}
+              onClick={() => setPanel("insights")}
+            >
+              Data insights
+            </Button>
           </div>
-          <div className="max-h-48 shrink-0 overflow-y-auto"><ModelControls
-            assumptions={assumptions}
-            scenario={scenario}
-            onScenario={(v) => {
-              setScenario(v);
-              setDriverCell(/^scenario/i, v);
-            }}
-            depreciation={depreciation}
-            onDepreciation={(v) => {
-              setDepreciation(v);
-              setDriverCell(/depreciation method|method/i, v);
-            }}
-            liveFormulas={highlightFormulas}
-            onLiveFormulas={setHighlightFormulas}
-            onAssumptionChange={onAssumptionChange}
-          /></div></>}
+          {panel === "insights" ? (
+            <div className="min-h-0 flex-1 overflow-auto">
+              <InsightsPanel
+                sheet={activeSheet}
+                onPropose={proposeLocal}
+                onAsk={(text) => {
+                  setMode("ask");
+                  setInput(text);
+                  setPanel("chat");
+                }}
+                disabled={busy || !!proposal}
+              />
+            </div>
+          ) : (
+            <>
+              <div className="min-h-0 flex-1">
+                <ChatPanel
+                  messages={messages}
+                  input={input}
+                  setInput={setInput}
+                  onSend={send}
+                  busy={busy}
+                  mode={mode}
+                  onMode={setMode}
+                  quality={quality}
+                  onQuality={setQuality}
+                  onCancel={stopRequest}
+                  formulas={formulas}
+                  vba={vba}
+                  issues={audit.issues}
+                  fixes={audit.fixes}
+                />
+              </div>
+              <div className="max-h-48 shrink-0 overflow-y-auto">
+                <ModelControls
+                  assumptions={assumptions}
+                  hasScenario={!!scenarioControl}
+                  hasDepreciation={!!depreciationControl}
+                  scenario={scenarioControl?.value ?? "Base"}
+                  onScenario={(v) => {
+                    setSheets((prev) => updateModelControl(prev, "scenario", v));
+                  }}
+                  depreciation={depreciationControl?.value ?? "Straight-Line"}
+                  onDepreciation={(v) => {
+                    setSheets((prev) => updateModelControl(prev, "depreciation", v));
+                  }}
+                  liveFormulas={highlightFormulas}
+                  onLiveFormulas={setHighlightFormulas}
+                  onAssumptionChange={onAssumptionChange}
+                />
+              </div>
+            </>
+          )}
         </div>
       </div>
 

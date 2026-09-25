@@ -27,8 +27,10 @@ type Props = {
   setInput: (v: string) => void;
   onSend: (prompt?: string) => void;
   busy: boolean;
-  mode: "ask" | "edit"; onMode: (value: "ask" | "edit") => void;
-  quality: "auto" | "fast" | "reasoning"; onQuality: (value: "auto" | "fast" | "reasoning") => void;
+  mode: "ask" | "edit";
+  onMode: (value: "ask" | "edit") => void;
+  quality: "auto" | "fast" | "reasoning";
+  onQuality: (value: "auto" | "fast" | "reasoning") => void;
   onCancel: () => void;
   formulas: string[];
   vba: string;
@@ -42,13 +44,16 @@ export function ChatPanel({
   setInput,
   onSend,
   busy,
-  mode, onMode, quality, onQuality, onCancel,
+  mode,
+  onMode,
+  quality,
+  onQuality,
+  onCancel,
   formulas,
   vba,
   issues = [],
   fixes = [],
 }: Props) {
-
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -64,9 +69,32 @@ export function ChatPanel({
           Describe the spreadsheet work — building, editing, reconciling or auditing.
         </p>
         <div className="mt-3 flex gap-2">
-          <select aria-label="AI mode" value={mode} onChange={e => onMode(e.target.value as typeof mode)} disabled={busy} className="min-w-0 flex-1 rounded border border-sidebar-border bg-sidebar p-2 text-xs"><option value="edit">Build / edit</option><option value="ask">Ask · read only</option></select>
-          <select aria-label="AI quality" value={quality} onChange={e => onQuality(e.target.value as typeof quality)} disabled={busy} className="min-w-0 flex-1 rounded border border-sidebar-border bg-sidebar p-2 text-xs"><option value="auto">Auto quality</option><option value="fast">Fast</option><option value="reasoning">Reasoning</option></select>
-        </div><p className="mt-2 text-[11px] text-sidebar-foreground/60">Workbook samples and profiles are sent to the configured AI provider when you run a prompt. Proposed edits require review.</p>
+          <select
+            aria-label="AI mode"
+            value={mode}
+            onChange={(e) => onMode(e.target.value as typeof mode)}
+            disabled={busy}
+            className="min-w-0 flex-1 rounded border border-sidebar-border bg-sidebar p-2 text-xs"
+          >
+            <option value="edit">Build / edit</option>
+            <option value="ask">Ask · read only</option>
+          </select>
+          <select
+            aria-label="AI quality"
+            value={quality}
+            onChange={(e) => onQuality(e.target.value as typeof quality)}
+            disabled={busy}
+            className="min-w-0 flex-1 rounded border border-sidebar-border bg-sidebar p-2 text-xs"
+          >
+            <option value="auto">Auto quality</option>
+            <option value="fast">Fast</option>
+            <option value="reasoning">Reasoning</option>
+          </select>
+        </div>
+        <p className="mt-2 text-[11px] text-sidebar-foreground/60">
+          Workbook samples and profiles are sent to the configured AI provider when you run a
+          prompt. Proposed edits require review.
+        </p>
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
@@ -99,14 +127,29 @@ export function ChatPanel({
             )}
           >
             <div className="prose prose-sm prose-invert max-w-none prose-p:my-1.5 prose-li:my-0.5 prose-headings:text-sm">
-              <ReactMarkdown>{m.content}</ReactMarkdown><button type="button" className="mt-2 text-[11px] text-sidebar-foreground/60" onClick={() => void navigator.clipboard.writeText(m.content).then(() => toast.success("Copied"), () => toast.error("Clipboard unavailable"))}>Copy message</button>
+              <ReactMarkdown>{m.content}</ReactMarkdown>
+              <button
+                type="button"
+                className="mt-2 text-[11px] text-sidebar-foreground/60"
+                onClick={() =>
+                  void navigator.clipboard.writeText(m.content).then(
+                    () => toast.success("Copied"),
+                    () => toast.error("Clipboard unavailable"),
+                  )
+                }
+              >
+                Copy message
+              </button>
             </div>
           </div>
         ))}
 
         {busy && (
           <div className="flex items-center gap-2 rounded-lg bg-sidebar-accent/60 px-3 py-2 text-sm">
-            <Loader2 className="size-4 animate-spin text-sidebar-primary" /> Preparing a proposal… <button type="button" onClick={onCancel} className="ml-auto underline">Stop</button>
+            <Loader2 className="size-4 animate-spin text-sidebar-primary" /> Preparing a proposal…{" "}
+            <button type="button" onClick={onCancel} className="ml-auto underline">
+              Stop
+            </button>
           </div>
         )}
 
@@ -182,7 +225,6 @@ export function ChatPanel({
           </div>
         )}
         <div ref={endRef} />
-
       </div>
 
       <div className="border-t border-sidebar-border p-3">

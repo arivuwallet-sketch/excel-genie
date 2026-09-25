@@ -1,4 +1,4 @@
-import { S, type FinancialTemplate } from "./types";
+import { S, type FinancialTemplate } from "./types.ts";
 
 const YEARS = ["FY2026", "FY2027", "FY2028", "FY2029", "FY2030"];
 const COL = (i: number) => String.fromCharCode(66 + i); // B, C, D...

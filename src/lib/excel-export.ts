@@ -1,5 +1,5 @@
-import { numericValue } from "./workbook-intelligence";
-import { sanitizeSheetName, stripIllegalXmlChars, type Sheet } from "./spreadsheet";
+import { numericValue } from "./workbook-intelligence.ts";
+import { sanitizeSheetName, stripIllegalXmlChars, type Sheet } from "./spreadsheet.ts";
 
 /** Industry-standard modelling colours. */
 const INPUT_BLUE = "FF0000FF";
@@ -125,5 +125,5 @@ export async function downloadStyledWorkbook(sheets: Sheet[], filename = "sheets
   a.href = url;
   a.download = `${filename}.xlsx`;
   a.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

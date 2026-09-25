@@ -10,8 +10,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "test": "node --test tests/workbook.test.mjs",
-    "test:integration": "bun test tests/import-export.test.mjs",
+    "test": "node --test tests/workbook.test.mjs tests/powerbi-data.test.mjs tests/templates.test.mjs",
+    "test:integration": "node --test tests/import-export.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "overrides": {

@@ -11,7 +11,8 @@ export type AuditIssue = {
     | "unguarded-division"
     | "text-in-math"
     | "circular-ref"
-    | "spill-blocked";
+    | "spill-blocked"
+    | "audit-limit";
   detail: string;
 };
 
@@ -46,7 +47,7 @@ function stripLiterals(formula: string) {
 }
 
 const REF_RE =
-  /(?:(?:'((?:[^']|'')*)'|([A-Za-z0-9_]+))!)?(\$?[A-Z]{1,3}\$?\d{1,7})(?::(\$?[A-Z]{1,3}\$?\d{1,7}))?/g;
+  /(?:(?:'((?:[^']|'')*)'|([A-Za-z0-9_]+))!)?(\$?[A-Z]{1,3}\$?\d{1,7})(?::(\$?[A-Z]{1,3}\$?\d{1,7}))?/gi;
 
 type Ref = {
   sheet: string | null;
@@ -57,7 +58,7 @@ type Ref = {
 };
 
 function parseCell(ref: string) {
-  const m = /^\$?([A-Z]{1,3})\$?(\d{1,7})$/.exec(ref);
+  const m = /^\$?([A-Z]{1,3})\$?(\d{1,7})$/i.exec(ref);
   if (!m) return null;
   return { col: colIndex(m[1] as string), row: Number(m[2]) - 1 };
 }
@@ -71,14 +72,17 @@ export function collectRefs(formula: string): Ref[] {
   while ((m = REF_RE.exec(scrubbed))) {
     const before = scrubbed[m.index - 1] ?? "";
     if (/[A-Za-z0-9_$.]/.test(before) && !m[1] && !m[2]) continue;
+    const after = scrubbed.slice(m.index + m[0].length);
+    // Function names such as LOG10 and identifiers such as A1_total are not cell references.
+    if (/^[A-Za-z0-9_.]/.test(after) || /^\s*\(/.test(after)) continue;
     const start = parseCell(m[3] as string);
     if (!start) continue;
     const end = m[4] ? parseCell(m[4]) : start;
     if (!end) continue;
     out.push({
       sheet: (m[1]?.replace(/''/g, "'") ?? m[2] ?? null) as string | null,
-      start,
-      end,
+      start: { row: Math.min(start.row, end.row), col: Math.min(start.col, end.col) },
+      end: { row: Math.max(start.row, end.row), col: Math.max(start.col, end.col) },
       text: m[0],
       index: m.index,
     });
@@ -92,7 +96,7 @@ const cellAt = (sheet: Sheet | undefined, row: number, col: number) =>
   (sheet?.rows[row]?.[col] ?? "").trim();
 
 const isBlankRange = (sheet: Sheet, r: Ref) => {
-  for (let row = r.start.row; row <= Math.min(r.end.row, r.start.row + 5000); row += 1) {
+  for (let row = r.start.row; row <= Math.min(r.end.row, sheet.rows.length - 1); row += 1) {
     for (let col = r.start.col; col <= r.end.col; col += 1) {
       if (cellAt(sheet, row, col) !== "") return false;
     }
@@ -103,7 +107,14 @@ const isBlankRange = (sheet: Sheet, r: Ref) => {
 const rangeOutOfBounds = (sheet: Sheet, r: Ref) => {
   const height = sheet.rows.length;
   const width = sheet.rows.reduce((max, row) => Math.max(max, row.length), 0);
-  return r.start.row >= height || r.end.row >= height || r.start.col >= width || r.end.col >= width;
+  return (
+    r.start.row < 0 ||
+    r.start.col < 0 ||
+    r.start.row >= height ||
+    r.end.row >= height ||
+    r.start.col >= width ||
+    r.end.col >= width
+  );
 };
 
 const MATH_ONLY = /^=[-+]?[\s$A-Z0-9.!'":,()*/+%-]+$/i;
@@ -125,17 +136,30 @@ export function auditAndRepair(input: Sheet[]): AuditReport {
       for (let col = 0; col < line.length; col += 1) {
         const raw = (line[col] ?? "").trim();
         if (!raw.startsWith("=")) continue;
-        let formula = raw;
-        const at = `${sheet.name}!${A1(row, col)}`;
+        const formula = raw;
 
         // 1. repair references to sheets that do not exist
         const refs = collectRefs(formula);
         for (const r of refs) {
           if (!r.sheet) continue;
           if (byName.has(norm(r.sheet))) continue;
-          issues.push({ sheet: sheet.name, cell: A1(row, col), formula, kind: "missing-sheet", detail: `References missing sheet "${r.sheet}". Select the intended sheet explicitly.` });
+          issues.push({
+            sheet: sheet.name,
+            cell: A1(row, col),
+            formula,
+            kind: "missing-sheet",
+            detail: `References missing sheet "${r.sheet}". Select the intended sheet explicitly.`,
+          });
         }
-        if (/\//.test(stripLiterals(formula)) && !/IFERROR|IFNA/i.test(formula)) issues.push({ sheet: sheet.name, cell: A1(row, col), formula, kind: "unguarded-division", detail: "Division may fail when the denominator is zero. Decide whether an error or fallback is appropriate." });
+        if (/\//.test(stripLiterals(formula)) && !/IFERROR|IFNA/i.test(formula))
+          issues.push({
+            sheet: sheet.name,
+            cell: A1(row, col),
+            formula,
+            kind: "unguarded-division",
+            detail:
+              "Division may fail when the denominator is zero. Decide whether an error or fallback is appropriate.",
+          });
 
         // 3. flag references that point at nothing / off the end of a sheet
         for (const r of collectRefs(formula)) {
@@ -182,7 +206,7 @@ export function auditAndRepair(input: Sheet[]): AuditReport {
               cell: A1(row, col),
               formula,
               kind: "spill-blocked",
-              detail: `${A1(row + 1, col)} already holds "${below.slice(0, 24)}", which blocks this dynamic array from spilling (#SPILL!).`,
+              detail: `${A1(row + 1, col)} already holds "${below.slice(0, 24)}", may block this dynamic array if it returns more than one row. Confirm its spill size in Excel.`,
             });
           }
         }
@@ -201,6 +225,18 @@ function detectCircularRefs(sheets: Sheet[], byName: Map<string, Sheet>): AuditI
   type Node = { sheet: string; cell: string; formula: string };
   const nodes = new Map<string, Node>();
   const edges = new Map<string, Set<string>>();
+  const formulaRows = new Map<string, Map<number, number[]>>();
+  for (const sheet of sheets) {
+    const rows = new Map<number, number[]>();
+    sheet.rows.forEach((line, row) => {
+      const cols = line.flatMap((value, col) => (value.trimStart().startsWith("=") ? [col] : []));
+      if (cols.length) rows.set(row, cols);
+    });
+    formulaRows.set(sheet.name, rows);
+  }
+  let checks = 0;
+  const limitIssues: AuditIssue[] = [];
+  let limited = false;
 
   for (const sheet of sheets) {
     for (let row = 0; row < sheet.rows.length; row += 1) {
@@ -215,7 +251,40 @@ function detectCircularRefs(sheets: Sheet[], byName: Map<string, Sheet>): AuditI
           const targetSheetName = r.sheet ? (byName.get(norm(r.sheet))?.name ?? null) : sheet.name;
           if (!targetSheetName) continue;
           if (r.start.row !== r.end.row || r.start.col !== r.end.col) {
-            if (targetSheetName === sheet.name && row >= Math.min(r.start.row, r.end.row) && row <= Math.max(r.start.row, r.end.row) && col >= Math.min(r.start.col, r.end.col) && col <= Math.max(r.start.col, r.end.col)) deps.add(key);
+            if (
+              targetSheetName === sheet.name &&
+              row >= r.start.row &&
+              row <= r.end.row &&
+              col >= r.start.col &&
+              col <= r.end.col
+            )
+              deps.add(key);
+            if (!limited) {
+              scan: for (const [targetRow, columns] of formulaRows.get(targetSheetName) ?? []) {
+                if (++checks > 1000000) {
+                  limited = true;
+                  break;
+                }
+                if (targetRow < r.start.row || targetRow > r.end.row) continue;
+                for (const targetCol of columns) {
+                  if (++checks > 1000000) {
+                    limited = true;
+                    break scan;
+                  }
+                  if (targetCol >= r.start.col && targetCol <= r.end.col)
+                    deps.add(`${targetSheetName}!${A1(targetRow, targetCol)}`);
+                }
+              }
+              if (limited)
+                limitIssues.push({
+                  sheet: sheet.name,
+                  cell: A1(row, col),
+                  formula,
+                  kind: "audit-limit",
+                  detail:
+                    "Dependency audit reached its work limit. Some range cycles were not checked; validate this workbook in Excel.",
+                });
+            }
             continue;
           }
           deps.add(`${targetSheetName}!${A1(r.start.row, r.start.col)}`);
@@ -232,22 +301,39 @@ function detectCircularRefs(sheets: Sheet[], byName: Map<string, Sheet>): AuditI
   for (const start of nodes.keys()) {
     if (state.get(start)) continue;
     const frames: { key: string; deps: string[]; index: number }[] = [];
-    const enter = (key: string) => { state.set(key, 1); stack.push(key); frames.push({ key, deps: [...(edges.get(key) ?? [])], index: 0 }); };
+    const enter = (key: string) => {
+      state.set(key, 1);
+      stack.push(key);
+      frames.push({ key, deps: [...(edges.get(key) ?? [])], index: 0 });
+    };
     enter(start);
     while (frames.length) {
       const frame = frames[frames.length - 1]!;
       const dep = frame.deps[frame.index++];
-      if (dep === undefined) { state.set(frame.key, 2); stack.pop(); frames.pop(); continue; }
+      if (dep === undefined) {
+        state.set(frame.key, 2);
+        stack.pop();
+        frames.pop();
+        continue;
+      }
       if (!nodes.has(dep)) continue;
       if (state.get(dep) === 1) {
         const node = nodes.get(frame.key)!;
-        const chain = [...stack.slice(Math.max(stack.indexOf(dep), stack.length - 10)), dep].join(" -> ");
-        issues.push({ sheet: node.sheet, cell: node.cell, formula: node.formula, kind: "circular-ref", detail: `Circular reference: ${chain}` });
+        const chain = [...stack.slice(Math.max(stack.indexOf(dep), stack.length - 10)), dep].join(
+          " -> ",
+        );
+        issues.push({
+          sheet: node.sheet,
+          cell: node.cell,
+          formula: node.formula,
+          kind: "circular-ref",
+          detail: `Circular reference: ${chain}`,
+        });
       } else if (!state.get(dep)) enter(dep);
     }
   }
 
-  return issues;
+  return [...issues, ...limitIssues];
 }
 
 /** True when the ref is a direct operand of + - * / ^ (not a comparison or text argument). */

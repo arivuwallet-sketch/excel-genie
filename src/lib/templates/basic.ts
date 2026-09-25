@@ -1,4 +1,4 @@
-import { S, type FinancialTemplate } from "./types";
+import { S, type FinancialTemplate } from "./types.ts";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
 

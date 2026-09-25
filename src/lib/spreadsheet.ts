@@ -1,7 +1,7 @@
 import Papa from "papaparse";
-import * as XLSX from "xlsx";
-import { MAX_ROWS, MAX_COLS, MAX_CELLS, validateWorkbook } from "./workbook-limits";
-import { numericValue } from "./workbook-intelligence";
+import * as XLSX from "xlsx/xlsx.mjs";
+import { MAX_ROWS, MAX_COLS, MAX_CELLS, MAX_SHEETS, validateWorkbook } from "./workbook-limits.ts";
+import { numericValue } from "./workbook-intelligence.ts";
 
 export type Sheet = { name: string; rows: string[][] };
 
@@ -49,7 +49,8 @@ export function extOf(name: string) {
 
 function normalize(aoa: unknown[][]): string[][] {
   const width = aoa.reduce<number>((max, row) => Math.max(max, row?.length ?? 0), 0);
-  if (aoa.length > MAX_ROWS || width > MAX_COLS || aoa.length * width > MAX_CELLS) throw new Error("Data exceeds supported workbook limits.");
+  if (aoa.length > MAX_ROWS || width > MAX_COLS || aoa.length * width > MAX_CELLS)
+    throw new Error("Data exceeds supported workbook limits.");
   return aoa.map((row) =>
     Array.from({ length: Math.max(width, 1) }, (_, i) => {
       const v = row?.[i];
@@ -59,19 +60,44 @@ function normalize(aoa: unknown[][]): string[][] {
 }
 
 export function workbookToSheets(wb: XLSX.WorkBook): Sheet[] {
-  return wb.SheetNames.map((name) => {
+  if (wb.SheetNames.length > MAX_SHEETS) throw new Error(`Use at most ${MAX_SHEETS} sheets.`);
+  let allocatedCells = 0;
+  const sheets = wb.SheetNames.map((name) => {
     const ws = wb.Sheets[name];
     if (!ws) return { name, rows: [] as string[][] };
     const bounds = XLSX.utils.decode_range(ws["!ref"] || "A1");
-    if (bounds.e.r >= MAX_ROWS || bounds.e.c >= MAX_COLS || (bounds.e.r + 1) * (bounds.e.c + 1) > MAX_CELLS) throw new Error("Worksheet exceeds supported limits.");
+    if (
+      bounds.e.r >= MAX_ROWS ||
+      bounds.e.c >= MAX_COLS ||
+      (bounds.e.r + 1) * (bounds.e.c + 1) > MAX_CELLS
+    )
+      throw new Error("Worksheet exceeds supported limits.");
+    allocatedCells += (bounds.e.r + 1) * (bounds.e.c + 1);
+    if (allocatedCells > MAX_CELLS) throw new Error("Workbook exceeds supported cell limits.");
     const aoa = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: false, defval: "" });
     const rows = normalize(aoa);
-    for (let r = 0; r < rows.length; r++) for (let c = 0; c < (rows[r]?.length ?? 0); c++) {
-      const cell = ws[XLSX.utils.encode_cell({ r: r + bounds.s.r, c: c + bounds.s.c })];
-      if (cell?.f) rows[r]![c] = `=${cell.f}`;
-    }
-    return { name, rows: [...Array.from({ length: bounds.s.r }, () => [] as string[]), ...rows.map(row => [...Array(bounds.s.c).fill(""), ...row])] };
-  }).filter((s) => s.rows.length > 0);
+    for (let r = 0; r < rows.length; r++)
+      for (let c = 0; c < (rows[r]?.length ?? 0); c++) {
+        const cell = ws[XLSX.utils.encode_cell({ r: r + bounds.s.r, c: c + bounds.s.c })];
+        if (cell?.f) rows[r]![c] = `=${cell.f}`;
+        else if (cell?.t === "n" && typeof cell.v === "number") {
+          // Keep full precision instead of importing rounded display text. Retain formatted dates
+          // and zero-padded identifiers, which the string-grid model stores as text.
+          const displayed = rows[r]![c] ?? "";
+          if (!XLSX.SSF.is_date(cell.z ?? "") && !/^0\d/.test(displayed))
+            rows[r]![c] = String(cell.v);
+        }
+      }
+    return {
+      name,
+      rows: [
+        ...Array.from({ length: bounds.s.r }, () => [] as string[]),
+        ...rows.map((row) => [...Array(bounds.s.c).fill(""), ...row]),
+      ],
+    };
+  });
+  validateWorkbook(sheets);
+  return sheets;
 }
 
 export async function parseFile(file: File): Promise<Sheet[]> {
@@ -84,20 +110,27 @@ export async function parseFile(file: File): Promise<Sheet[]> {
     );
   }
 
-  if (!SUPPORTED_EXT.includes(ext)) throw new Error("Unsupported format. Convert to XLSX or CSV first.");
+  if (!SUPPORTED_EXT.includes(ext))
+    throw new Error("Unsupported format. Convert to XLSX or CSV first.");
 
   if (ext === "csv" || ext === "txt" || ext === "prn") {
     const text = await file.text();
     return [
       {
-        name: file.name.replace(/\.[^.]+$/, "").slice(0, 28) || "Sheet1",
+        name: sanitizeSheetName(file.name.replace(/\.[^.]+$/, ""), new Set()),
         rows: parseDelimited(text),
       },
     ];
   }
 
   const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { type: "array", cellFormula: true, cellStyles: true });
+  const wb = XLSX.read(buf, {
+    type: "array",
+    cellFormula: true,
+    cellStyles: true,
+    cellNF: true,
+    sheetStubs: true,
+  });
   const sheets = workbookToSheets(wb);
   if (sheets.length === 0) throw new Error("No readable data found in this file.");
   validateWorkbook(sheets);
@@ -105,8 +138,15 @@ export async function parseFile(file: File): Promise<Sheet[]> {
 }
 
 export function parseDelimited(text: string): string[][] {
-  const parsed = Papa.parse<string[]>(text, { skipEmptyLines: true });
-  if (parsed.errors.some(e => e.code !== "UndetectableDelimiter")) throw new Error("Could not parse delimited data.");
+  if (text.length > 20 * 1024 * 1024) throw new Error("Text exceeds the 20 MB input limit.");
+  if (!text) return [];
+  const parsed = Papa.parse<string[]>(text, {
+    skipEmptyLines: false,
+  });
+  // A terminal newline ends the last record; internal blank records retain their row positions.
+  if (/[\r\n]$/.test(text) && parsed.data.at(-1)?.every((value) => value === "")) parsed.data.pop();
+  if (parsed.errors.some((e) => e.code !== "UndetectableDelimiter"))
+    throw new Error("Could not parse delimited data.");
   const rows = normalize(parsed.data as unknown[][]);
   validateWorkbook([{ name: "Imported", rows }]);
   return rows;
@@ -116,6 +156,7 @@ export function parseDelimited(text: string): string[][] {
 export function parseClipboard(data: DataTransfer): Sheet[] | null {
   const html = data.getData("text/html");
   if (html && /<t[dr]\b/i.test(html)) {
+    if (html.length > 20 * 1024 * 1024) throw new Error("Clipboard exceeds the 20 MB input limit.");
     const wb = XLSX.read(html, { type: "string" });
     const sheets = workbookToSheets(wb);
     if (sheets.length) return sheets.map((s, i) => ({ ...s, name: i === 0 ? "Pasted" : s.name }));
@@ -142,10 +183,12 @@ function stripRtf(rtf: string) {
 export function sanitizeSheetName(raw: string, used: Set<string>, fallback = "Sheet"): string {
   let base = raw
     .replace(/[:\\/?*[\]]/g, " ")
+    .trim()
     .replace(/^'+|'+$/g, "")
     .trim();
   if (!base) base = fallback;
-  base = base.slice(0, 31);
+  base = base.slice(0, 31).replace(/'+$/g, "").trim() || fallback;
+  if (base.toLowerCase() === "history") base = "History Sheet";
 
   let candidate = base;
   let n = 2;
@@ -199,7 +242,12 @@ export function downloadWorkbook(sheets: Sheet[], format: "xlsx" | "csv", filena
   if (format === "csv") {
     const csv = Papa.unparse(sheets[0]?.rows ?? [], { escapeFormulae: true });
     const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
-    const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${filename}.csv`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); return;
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${filename}.csv`;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return;
   }
   const wb = sheetsToWorkbook(sheets);
   XLSX.writeFile(wb, `${filename}.${format}`, { bookType: format, compression: true });

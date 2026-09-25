@@ -10,44 +10,13 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import type { Sheet } from "@/lib/spreadsheet";
 
-export type Assumption = {
-  /** Sheet index / row / col of the driver cell. */
-  sheet: number;
-  row: number;
-  col: number;
-  label: string;
-  value: number;
-  isPercent: boolean;
-};
-
-const KEYWORDS =
-  /(growth|margin|rate|wacc|discount|churn|tax|multiple|inflation|escalat|price|terminal|exit|interest|utilis|utiliz)/i;
-
-/** Find up to `limit` numeric driver cells that look like key model assumptions. */
-export function findAssumptions(sheets: Sheet[], limit = 5): Assumption[] {
-  const out: Assumption[] = [];
-  sheets.forEach((s, si) => {
-    s.rows.forEach((row, ri) => {
-      const label = row[0] ?? "";
-      if (!KEYWORDS.test(label)) return;
-      for (let ci = 1; ci < row.length; ci++) {
-        const raw = (row[ci] ?? "").trim();
-        if (!raw || raw.startsWith("=")) continue;
-        const pct = raw.endsWith("%");
-        const n = Number(raw.replace(/[%,$\s]/g, ""));
-        if (!Number.isFinite(n)) continue;
-        out.push({ sheet: si, row: ri, col: ci, label, value: n, isPercent: pct || n < 1 });
-        return;
-      }
-    });
-  });
-  return out.slice(0, limit);
-}
+import type { Assumption } from "@/lib/model-controls";
 
 type Props = {
   assumptions: Assumption[];
+  hasScenario: boolean;
+  hasDepreciation: boolean;
   scenario: string;
   onScenario: (s: string) => void;
   depreciation: string;
@@ -59,6 +28,8 @@ type Props = {
 
 export function ModelControls({
   assumptions,
+  hasScenario,
+  hasDepreciation,
   scenario,
   onScenario,
   depreciation,
@@ -76,12 +47,12 @@ export function ModelControls({
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label className="text-xs">Scenario</Label>
-          <Select value={scenario} onValueChange={onScenario}>
+          <Select disabled={!hasScenario} value={scenario} onValueChange={onScenario}>
             <SelectTrigger className="h-8 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {["Base", "Upside", "Downside", "Management"].map((s) => (
+              {["Base", "Upside", "Downside"].map((s) => (
                 <SelectItem key={s} value={s}>
                   {s}
                 </SelectItem>
@@ -91,18 +62,16 @@ export function ModelControls({
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs">Depreciation method</Label>
-          <Select value={depreciation} onValueChange={onDepreciation}>
+          <Select disabled={!hasDepreciation} value={depreciation} onValueChange={onDepreciation}>
             <SelectTrigger className="h-8 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {["Straight-line", "Declining balance (DB)", "Double-declining (DDB)", "Sum-of-years (SYD)", "Units of production"].map(
-                (s) => (
-                  <SelectItem key={s} value={s}>
-                    {s}
-                  </SelectItem>
-                ),
-              )}
+              {["Straight-Line", "Double Declining", "MACRS"].map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -125,7 +94,7 @@ export function ModelControls({
               </div>
               <Slider
                 value={[a.value]}
-                min={a.isPercent ? 0 : Math.min(0, a.value * 0.5)}
+                min={Math.min(0, a.value * 2)}
                 max={a.isPercent ? Math.max(50, a.value * 2) : Math.max(1, a.value * 2)}
                 step={a.isPercent ? 0.5 : Math.max(1, Math.round(Math.abs(a.value) / 100))}
                 onValueChange={([v]) => v !== undefined && onAssumptionChange(a, v)}

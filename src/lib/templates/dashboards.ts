@@ -1,4 +1,4 @@
-import { S, type FinancialTemplate } from "./types";
+import { S, type FinancialTemplate } from "./types.ts";
 
 /**
  * Dashboard templates — built with a hidden Data/Calc tab feeding a clean

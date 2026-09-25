@@ -1,10 +1,10 @@
-import { ADVANCED_TEMPLATES } from "./advanced";
-import { BASIC_TEMPLATES } from "./basic";
-import { DASHBOARD_TEMPLATES } from "./dashboards";
-import { INSTITUTIONAL_TEMPLATES } from "./institutional";
-import { INTERMEDIATE_TEMPLATES } from "./intermediate";
-import { QUANT_TEMPLATES } from "./quant";
-import type { FinancialTemplate, TemplateTier } from "./types";
+import { ADVANCED_TEMPLATES } from "./advanced.ts";
+import { BASIC_TEMPLATES } from "./basic.ts";
+import { DASHBOARD_TEMPLATES } from "./dashboards.ts";
+import { INSTITUTIONAL_TEMPLATES } from "./institutional.ts";
+import { INTERMEDIATE_TEMPLATES } from "./intermediate.ts";
+import { QUANT_TEMPLATES } from "./quant.ts";
+import type { FinancialTemplate, TemplateTier } from "./types.ts";
 
 export type { FinancialTemplate, TemplateTier };
 

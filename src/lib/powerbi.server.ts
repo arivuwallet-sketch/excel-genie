@@ -1,7 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import { isNumeric } from "./excel-export";
+import { toPbiTables, assertPbiSchema } from "./powerbi-data";
+import { MAX_ROWS, MAX_COLS, MAX_CELL_LENGTH, MAX_SHEETS } from "./workbook-limits";
 
 /**
  * Pushes the current workbook into a Power BI "push dataset" via the real Power BI REST API —
@@ -12,20 +13,20 @@ import { isNumeric } from "./excel-export";
  */
 
 const RequestSchema = z.object({
-  sheets: z.array(z.object({ name: z.string(), rows: z.array(z.array(z.string())) })),
+  sheets: z
+    .array(
+      z.object({
+        name: z.string().min(1).max(31),
+        rows: z.array(z.array(z.string().max(MAX_CELL_LENGTH)).max(MAX_COLS)).max(MAX_ROWS),
+      }),
+    )
+    .min(1)
+    .max(MAX_SHEETS),
 });
 
 const TOKEN_URL = (tenant: string) =>
   `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`;
 const API_ROOT = "https://api.powerbi.com/v1.0/myorg";
-
-type PbiColumn = { name: string; dataType: "String" | "Double" | "DateTime" };
-type PbiTable = {
-  name: string;
-  sanitized: string;
-  columns: PbiColumn[];
-  rows: Record<string, string | number>[];
-};
 
 function requireEnv(name: string): string {
   const v = process.env[name];
@@ -54,6 +55,7 @@ async function getAccessToken(): Promise<string> {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
+    signal: AbortSignal.timeout(30000),
   });
   if (!res.ok) {
     throw new Error(`Azure AD token request failed (${res.status}): ${await res.text()}`);
@@ -63,53 +65,10 @@ async function getAccessToken(): Promise<string> {
   return data.access_token;
 }
 
-/** A push dataset needs an explicit, typed schema up front — infer String vs Double per column. */
-function toPbiTable(sheet: { name: string; rows: string[][] }): PbiTable {
-  const header = sheet.rows[1] ?? [];
-  const dataRows = sheet.rows.slice(2);
-  const width = header.length || Math.max(1, ...sheet.rows.map((r) => r.length));
-
-  const columns: PbiColumn[] = [];
-  for (let c = 0; c < width; c++) {
-    const label = header[c]?.trim() || `Column ${c + 1}`;
-    const values = dataRows.map((r) => r[c] ?? "").filter((v) => v !== "" && !v.startsWith("="));
-    const numericShare = values.length
-      ? values.filter((v) => isNumeric(v)).length / values.length
-      : 0;
-    columns.push({ name: label, dataType: numericShare >= 0.8 ? "Double" : "String" });
-  }
-
-  const rows = dataRows
-    .filter((r) => r.some((v) => v !== ""))
-    .map((r) => {
-      const row: Record<string, string | number> = {};
-      columns.forEach((col, c) => {
-        const raw = r[c] ?? "";
-        if (col.dataType === "Double") {
-          const n = Number(raw.replace(/[,$%]/g, ""));
-          row[col.name] = Number.isFinite(n) ? n : 0;
-        } else {
-          row[col.name] = raw.startsWith("=") ? "" : raw;
-        }
-      });
-      return row;
-    });
-
-  return {
-    name: sheet.name,
-    sanitized:
-      sheet.name
-        .replace(/[^A-Za-z0-9 _-]/g, " ")
-        .trim()
-        .slice(0, 100) || "Sheet",
-    columns,
-    rows,
-  };
-}
-
 async function pbiFetch(token: string, path: string, init?: RequestInit) {
   const res = await fetch(`${API_ROOT}${path}`, {
     ...init,
+    signal: AbortSignal.timeout(30000),
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
@@ -132,10 +91,10 @@ export const pushToPowerBi = createServerFn({ method: "POST" })
     }): Promise<{ datasetName: string; tablesPushed: number; rowsPushed: number }> => {
       const workspaceId = requireEnv("POWERBI_WORKSPACE_ID");
       const datasetName = process.env["POWERBI_DATASET_NAME"] || "SheetSmith Export";
-      const token = await getAccessToken();
-
-      const tables = data.sheets.map(toPbiTable).filter((t) => t.columns.length > 0);
+      const tables = toPbiTables(data.sheets);
       if (tables.length === 0) throw new Error("Nothing to push — every sheet is empty.");
+
+      const token = await getAccessToken();
 
       // Reuse an existing dataset with this name in the workspace if one exists, else create it.
       const existing = (await pbiFetch(token, `/groups/${workspaceId}/datasets`)) as {
@@ -152,7 +111,14 @@ export const pushToPowerBi = createServerFn({ method: "POST" })
             tables: tables.map((t) => ({ name: t.sanitized, columns: t.columns })),
           }),
         })) as { id: string };
+        if (!created?.id) throw new Error("Power BI did not return a dataset ID.");
         datasetId = created.id;
+      } else {
+        const schema = (await pbiFetch(
+          token,
+          `/groups/${workspaceId}/datasets/${datasetId}/tables`,
+        )) as { value?: { name: string; columns: { name: string; dataType: string }[] }[] };
+        assertPbiSchema(tables, schema?.value ?? []);
       }
 
       let rowsPushed = 0;
@@ -160,18 +126,18 @@ export const pushToPowerBi = createServerFn({ method: "POST" })
         // Clear then re-push, so re-running this after edits always reflects the current workbook.
         await pbiFetch(
           token,
-          `/groups/${workspaceId}/datasets/${datasetId}/tables/${table.sanitized}/rows`,
+          `/groups/${workspaceId}/datasets/${datasetId}/tables/${encodeURIComponent(table.sanitized)}/rows`,
           {
             method: "DELETE",
           },
-        ).catch(() => null); // a brand-new table has no rows yet — a 404 here is expected, not fatal
+        ); // Abort on failure: appending after a failed clear would duplicate data.
         if (table.rows.length === 0) continue;
         // Power BI accepts at most 10,000 rows per call; chunk defensively.
         for (let i = 0; i < table.rows.length; i += 5000) {
           const chunk = table.rows.slice(i, i + 5000);
           await pbiFetch(
             token,
-            `/groups/${workspaceId}/datasets/${datasetId}/tables/${table.sanitized}/rows`,
+            `/groups/${workspaceId}/datasets/${datasetId}/tables/${encodeURIComponent(table.sanitized)}/rows`,
             {
               method: "POST",
               body: JSON.stringify({ rows: chunk }),
