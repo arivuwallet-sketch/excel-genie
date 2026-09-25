@@ -103,3 +103,11 @@ test("XLSX serialization round trip retains formulas and long identifiers", asyn
   const imported = await spreadsheet.parseFile(new File([buffer], "roundtrip.xlsx"));
   assert.deepEqual(imported, source);
 });
+
+test("CSV with quoted tabs retains comma-separated columns", () => {
+  assert.deepEqual(spreadsheet.parseDelimited('Name,Note\nAlice,"a\tb"\nBob,"c\td"'), [
+    ["Name", "Note"],
+    ["Alice", "a\tb"],
+    ["Bob", "c\td"],
+  ]);
+});

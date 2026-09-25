@@ -140,9 +140,15 @@ export async function parseFile(file: File): Promise<Sheet[]> {
 export function parseDelimited(text: string): string[][] {
   if (text.length > 20 * 1024 * 1024) throw new Error("Text exceeds the 20 MB input limit.");
   if (!text) return [];
-  const parsed = Papa.parse<string[]>(text, {
-    skipEmptyLines: false,
-  });
+  let parsed = Papa.parse<string[]>(text, { skipEmptyLines: false });
+  // Sparse TSV can defeat delimiter auto-detection. Only fall back when detection failed,
+  // ignoring tabs inside quoted CSV fields.
+  if (
+    parsed.errors.some((error) => error.code === "UndetectableDelimiter") &&
+    text.replace(/"(?:[^"]|"")*"/g, "").includes("\t")
+  ) {
+    parsed = Papa.parse<string[]>(text, { skipEmptyLines: false, delimiter: "\t" });
+  }
   // A terminal newline ends the last record; internal blank records retain their row positions.
   if (/[\r\n]$/.test(text) && parsed.data.at(-1)?.every((value) => value === "")) parsed.data.pop();
   if (parsed.errors.some((e) => e.code !== "UndetectableDelimiter"))
