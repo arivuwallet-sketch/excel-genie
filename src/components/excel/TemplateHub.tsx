@@ -37,6 +37,7 @@ const TIER_BLURB: Record<TemplateTier, string> = {
   Quantitative: "Monte Carlo, Black-Scholes Greeks, risk and statistical engines.",
   Dashboards: "KPI boards, executive summaries and interactive reporting views.",
   Institutional: "Cap tables, bank, real estate, REIT, shipping and FinOps models.",
+  Operations: "Healthcare capacity, renewable generation, construction and bid costing.",
 };
 
 export function TemplateHub({ open, onOpenChange, onLoad, onExtend, onPrompt }: Props) {
@@ -57,7 +58,7 @@ export function TemplateHub({ open, onOpenChange, onLoad, onExtend, onPrompt }: 
     const match = matchTemplate(text);
     if (match) {
       onLoad(match);
-      onExtend({ ...match, prompt: text });
+      // Loading is synchronous in the UI contract; do not submit AI with the previous workbook.
     } else {
       onPrompt(text);
     }
@@ -70,7 +71,7 @@ export function TemplateHub({ open, onOpenChange, onLoad, onExtend, onPrompt }: 
       <DialogContent className="flex max-h-[88vh] max-w-4xl flex-col gap-4 overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="size-5 text-primary" /> Financial Template Library
+            <Sparkles className="size-5 text-primary" /> Workbook Template Library
           </DialogTitle>
           <DialogDescription>
             {ALL_TEMPLATES.length} formula-driven workbooks. Load one into the workspace, then edit

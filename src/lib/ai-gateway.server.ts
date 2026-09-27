@@ -4,6 +4,7 @@ export function createLovableAiGatewayProvider(apiKey: string) {
   return createOpenAICompatible({
     name: "lovable-gateway",
     baseURL: "https://ai.gateway.lovable.dev/v1",
+    apiKey,
     headers: { "Lovable-API-Key": apiKey },
   });
 }

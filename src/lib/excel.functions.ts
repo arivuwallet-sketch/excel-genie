@@ -1,9 +1,15 @@
 import { createServerFn } from "@tanstack/react-start";
-import { streamText } from "ai";
+import { generateText } from "ai";
+import {
+  classifyAgentError,
+  generateProposal,
+  ProposalError,
+  requestPrerequisite,
+  type AgentFailure,
+} from "./agent-core";
 import { z } from "zod";
 import { createLovableAiGatewayProvider } from "./ai-gateway.server";
-import { auditAndRepair, type AuditIssue } from "./formula-audit";
-import { applyOperations, SheetOpSchema } from "./sheet-ops";
+import { type AuditIssue } from "./formula-audit";
 import {
   validateWorkbook,
   MAX_ROWS,
@@ -13,7 +19,6 @@ import {
 } from "./workbook-limits";
 import { workbookContext } from "./workbook-intelligence";
 import { MODERN_FORMULA_GUIDANCE } from "./formula-compatibility";
-import { hasUnsafeFormula } from "./formula-safety";
 const SheetSchema = z.object({
   name: z.string().min(1).max(31),
   rows: z.array(z.array(z.string().max(MAX_CELL_LENGTH)).max(MAX_COLS)).max(MAX_ROWS),
@@ -27,12 +32,6 @@ const RequestSchema = z.object({
   mode: z.enum(["ask", "edit"]).default("edit"),
   quality: z.enum(["auto", "fast", "reasoning"]).default("auto"),
   activeSheet: z.string().max(31).optional(),
-});
-const OpResultSchema = z.object({
-  reply: z.string().max(30000),
-  operations: z.array(SheetOpSchema).max(200),
-  formulas: z.array(z.string()).max(200),
-  vba: z.string().max(50000),
 });
 export type AgentSheet = z.infer<typeof SheetSchema>;
 export type AgentResult = {
@@ -106,60 +105,82 @@ Context may be sampled. Profiles cover nonblank data rows, treating row 1 as hea
 Never invent source data, claim formulas were calculated, or claim features were applied that the operation schema cannot represent. Formatting, charts, validation and VBA execution are not supported operations; explain or provide instructions instead.
 Structural row edits and renames on formula workbooks are rejected to avoid broken references. Prefer targeted edits or a separate output sheet. No external workbook links, web-fetch formulas, DDE or executable commands.
 If you cannot safely fulfill the request, ask a focused question and return no operations. Do not replace an existing sheet unless explicitly requested. Explain proposed changes in future tense: the user must review them before they apply.`;
+export type AgentResponse =
+  { ok: true; result: AgentResult } | { ok: false; error: AgentFailure; requestId: string };
+export const getAiStatus = createServerFn({ method: "GET" }).handler(async () => ({
+  configured: !!process.env["LOVABLE_API_KEY"],
+  version: "excelgpt-2",
+}));
 export const runExcelAgent = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => RequestSchema.parse(input))
-  .handler(async ({ data }): Promise<AgentResult> => {
-    validateWorkbook(data.sheets);
-    const key = process.env["LOVABLE_API_KEY"];
-    if (!key) throw new Error("AI is not configured. Set LOVABLE_API_KEY on the server.");
-    const reasoning =
-      data.quality === "reasoning" ||
-      (data.quality === "auto" &&
-        /\b(DCF|LBO|reconcile|forecast|scenario|three.statement|audit)\b/i.test(data.prompt));
-    const model = reasoning
-      ? process.env["EXCEL_AI_REASONING_MODEL"] || "google/gemini-3.1-pro-preview"
-      : process.env["EXCEL_AI_FAST_MODEL"] || "google/gemini-3.8-flash";
-    const gateway = createLovableAiGatewayProvider(key);
-    const base = `WORKBOOK DATA:\n${workbookContext(data.sheets, data.activeSheet)}\nCONVERSATION DATA:\n${JSON.stringify(data.history.slice(-8))}\nUSER REQUEST: ${data.prompt}`;
-    let prompt = base;
-    for (let round = 0; round < 2; round++) {
-      try {
-        const response = streamText({
-          model: gateway(model),
-          system: `${SYSTEM}\n${MODERN_FORMULA_GUIDANCE}\n${CONTRACT}\nMode: ${data.mode}. ${data.mode === "ask" ? "Answer only. Return operations: []." : "Propose edits for review."}`,
-          prompt,
-          maxOutputTokens: 16000,
-          abortSignal: AbortSignal.timeout(90000),
-          maxRetries: 1,
-        });
-        const text = (await response.text)
-          .trim()
-          .replace(/^```(?:json)?\s*/i, "")
-          .replace(/\s*```$/, "");
-        const parsed = OpResultSchema.parse(JSON.parse(text));
-        if (data.mode === "ask" && parsed.operations.length)
-          throw new Error("Ask mode cannot edit a workbook.");
-        if (hasUnsafeFormula(parsed.operations))
-          throw new Error("External links and executable formulas are not allowed in AI edits.");
-        const applied = applyOperations(data.sheets, parsed.operations);
-        if (applied.problems.length) throw new Error(applied.problems.join("; "));
+  .handler(async ({ data }): Promise<AgentResponse> => {
+    const requestId = crypto.randomUUID();
+    try {
+      validateWorkbook(data.sheets);
+      const prerequisite = requestPrerequisite(data.prompt, data.sheets);
+      if (prerequisite)
         return {
-          reply: parsed.reply,
-          sheets: applied.sheets,
-          formulas: parsed.formulas,
-          vba: parsed.vba,
-          issues: auditAndRepair(applied.sheets).issues,
-          fixes: [],
-          model,
-          mode: data.mode,
+          ok: true,
+          result: {
+            reply: prerequisite,
+            sheets: data.sheets,
+            formulas: [],
+            vba: "",
+            issues: [],
+            fixes: [],
+            model: "local",
+            mode: data.mode,
+          },
         };
-      } catch (error) {
-        if (round === 1)
-          throw new Error(
-            "The AI could not produce a valid workbook proposal. Your workbook was not changed. Try a smaller, more specific request.",
-          );
-        prompt = `${base}\nYour response was rejected: ${error instanceof Error ? error.message.slice(0, 2000) : "Invalid response"}. Return a corrected JSON response. No operations have been applied.`;
-      }
+      const key = process.env["LOVABLE_API_KEY"];
+      if (!key)
+        return {
+          ok: false,
+          requestId,
+          error: {
+            code: "AI_NOT_CONFIGURED",
+            message:
+              "AI is not connected for this deployment. Enable the AI connector in Lovable and republish. You can use Templates and Workflows without AI.",
+            retryable: false,
+          },
+        };
+      const reasoning =
+        data.quality === "reasoning" ||
+        (data.quality === "auto" &&
+          /\b(DCF|LBO|reconcile|forecast|scenario|three.statement|audit)\b/i.test(data.prompt));
+      const model = reasoning
+        ? process.env["EXCEL_AI_REASONING_MODEL"] || "google/gemini-3.1-pro-preview"
+        : process.env["EXCEL_AI_FAST_MODEL"] || "google/gemini-3.8-flash";
+      const gateway = createLovableAiGatewayProvider(key);
+      const signal = AbortSignal.timeout(120000);
+      const base = `WORKBOOK DATA:\n${workbookContext(data.sheets, data.activeSheet)}\nCONVERSATION DATA:\n${JSON.stringify(data.history.slice(-8))}\nUSER REQUEST: ${data.prompt}`;
+      const parsed = await generateProposal({
+        sheets: data.sheets,
+        mode: data.mode,
+        prompt: base,
+        complete: async (prompt) => {
+          const response = await generateText({
+            model: gateway(model),
+            system: `${SYSTEM}\n${MODERN_FORMULA_GUIDANCE}\n${CONTRACT}\nMode: ${data.mode}. ${data.mode === "ask" ? "Answer only. Return operations: []." : "Propose edits for review."}`,
+            prompt,
+            maxOutputTokens: 16000,
+            abortSignal: signal,
+            maxRetries: 0,
+          });
+          return { text: response.text, finishReason: response.finishReason };
+        },
+      });
+      return { ok: true, result: { ...parsed, model, mode: data.mode } };
+    } catch (error) {
+      const failure =
+        error instanceof ProposalError
+          ? {
+              code: "AI_PROPOSAL",
+              message: `${error.message} Your workbook is unchanged.`,
+              retryable: true,
+            }
+          : classifyAgentError(error);
+      console.error("excelgpt_ai_failure", { requestId, code: failure.code });
+      return { ok: false, requestId, error: failure };
     }
-    throw new Error("No valid AI response.");
   });

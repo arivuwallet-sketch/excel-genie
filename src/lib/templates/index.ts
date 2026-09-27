@@ -1,3 +1,4 @@
+import { OPERATIONS_TEMPLATES } from "./operations.ts";
 import { ADVANCED_TEMPLATES } from "./advanced.ts";
 import { BASIC_TEMPLATES } from "./basic.ts";
 import { DASHBOARD_TEMPLATES } from "./dashboards.ts";
@@ -15,6 +16,7 @@ export const ALL_TEMPLATES: FinancialTemplate[] = [
   ...QUANT_TEMPLATES,
   ...DASHBOARD_TEMPLATES,
   ...INSTITUTIONAL_TEMPLATES,
+  ...OPERATIONS_TEMPLATES,
 ];
 
 export const TIERS: TemplateTier[] = [
@@ -24,6 +26,7 @@ export const TIERS: TemplateTier[] = [
   "Quantitative",
   "Dashboards",
   "Institutional",
+  "Operations",
 ];
 
 export const templatesByTier = (tier: TemplateTier) => ALL_TEMPLATES.filter((t) => t.tier === tier);

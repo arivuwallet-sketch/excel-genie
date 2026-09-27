@@ -26,6 +26,7 @@ type Props = {
   input: string;
   setInput: (v: string) => void;
   onSend: (prompt?: string) => void;
+  onWorkflow: () => void;
   busy: boolean;
   mode: "ask" | "edit";
   onMode: (value: "ask" | "edit") => void;
@@ -43,6 +44,7 @@ export function ChatPanel({
   input,
   setInput,
   onSend,
+  onWorkflow,
   busy,
   mode,
   onMode,
@@ -106,7 +108,7 @@ export function ChatPanel({
             {QUICK_PROMPTS.map((p) => (
               <button
                 key={p}
-                onClick={() => onSend(p)}
+                onClick={() => (p === QUICK_PROMPTS[0] ? onWorkflow() : onSend(p))}
                 disabled={busy}
                 className="w-full rounded-md border border-sidebar-border bg-sidebar-accent/50 px-3 py-2 text-left text-xs leading-snug transition-colors hover:bg-sidebar-accent disabled:opacity-50"
               >
@@ -233,7 +235,7 @@ export function ChatPanel({
             {QUICK_PROMPTS.slice(0, 3).map((p) => (
               <Badge
                 key={p}
-                onClick={() => !busy && onSend(p)}
+                onClick={() => !busy && (p === QUICK_PROMPTS[0] ? onWorkflow() : onSend(p))}
                 className="cursor-pointer bg-sidebar-accent text-[10px] font-normal text-sidebar-foreground hover:bg-sidebar-primary/30"
               >
                 {p.split(" ").slice(0, 3).join(" ")}…

@@ -175,7 +175,7 @@ export function SheetGrid({ sheet, onCellChange, onRangeChange, highlightFormula
         >
           Columns →
         </Button>
-        <span className="ml-auto text-muted-foreground">Formulas recalculate in Excel.</span>
+        <span className="ml-auto text-muted-foreground">Use Calculate for supported formulas.</span>
       </div>
     </div>
   );

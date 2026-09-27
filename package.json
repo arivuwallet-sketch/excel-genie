@@ -10,9 +10,10 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "test": "node --test tests/workbook.test.mjs tests/powerbi-data.test.mjs tests/templates.test.mjs",
+    "test": "node --test tests/workbook.test.mjs tests/powerbi-data.test.mjs tests/templates.test.mjs tests/agent.test.mjs tests/workflows.test.mjs tests/calculation.test.mjs",
     "test:integration": "node --test tests/import-export.test.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test"
   },
   "overrides": {
     "rolldown": "1.2.1"
@@ -80,6 +81,7 @@
   "devDependencies": {
     "@eslint/js": "^9.32.0",
     "@lovable.dev/vite-tanstack-config": "^2.20.0",
+    "@playwright/test": "1.61.1",
     "@types/node": "^22.16.5",
     "@types/papaparse": "^5.5.2",
     "@types/react": "^19.2.0",

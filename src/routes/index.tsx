@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
   BarChart3,
+  Calculator,
+  Workflow,
   Download,
   FileSpreadsheet,
   LayoutTemplate,
@@ -16,6 +18,10 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { CalculationPanel } from "@/components/excel/CalculationPanel";
+import { WorkflowHub } from "@/components/excel/WorkflowHub";
+import { combineImports } from "@/lib/import-batch";
+import { requestPrerequisite } from "@/lib/request-prerequisites";
 import { ChangePreview, type Proposal } from "@/components/excel/ChangePreview";
 import { InsightsPanel } from "@/components/excel/InsightsPanel";
 import { validateWorkbook, MAX_ROWS, MAX_COLS } from "@/lib/workbook-limits";
@@ -48,7 +54,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { downloadStyledWorkbook } from "@/lib/excel-export";
-import { runExcelAgent } from "@/lib/excel.functions";
+import { runExcelAgent, getAiStatus } from "@/lib/excel.functions";
 import { auditAndRepair, type AuditIssue } from "@/lib/formula-audit";
 import { pushToPowerBi } from "@/lib/powerbi.server";
 import { useUndoableState } from "@/hooks/use-undoable-state";
@@ -68,13 +74,13 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "SheetSmith — AI Excel Analyzer, Builder & Editor" },
+      { title: "ExcelGPT — AI Excel Analyzer, Builder & Editor" },
       {
         name: "description",
         content:
           "Build, edit, reconcile and analyze Excel workbooks with natural language. Import 20+ spreadsheet formats and export polished .xlsx or .csv files.",
       },
-      { property: "og:title", content: "SheetSmith — AI Excel Analyzer, Builder & Editor" },
+      { property: "og:title", content: "ExcelGPT — AI Excel Analyzer, Builder & Editor" },
       {
         property: "og:description",
         content:
@@ -89,6 +95,8 @@ export const Route = createFileRoute("/")({
 
 function Index() {
   const [sheets, setSheets, sheetHistory] = useUndoableState<Sheet[]>([emptySheet()]);
+  const sheetsRef = useRef(sheets);
+  sheetsRef.current = sheets;
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [mode, setMode] = useState<"ask" | "edit">("edit");
   const [quality, setQuality] = useState<"auto" | "fast" | "reasoning">("auto");
@@ -114,11 +122,32 @@ function Index() {
 
   const [dragging, setDragging] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [workflowsOpen, setWorkflowsOpen] = useState(false);
+  const [calculationOpen, setCalculationOpen] = useState(false);
+  const [aiStatus, setAiStatus] = useState<
+    "checking" | "configured" | "unconfigured" | "unreachable"
+  >("checking");
+  const importMode = useRef<"replace" | "append">("replace");
   const [hubOpen, setHubOpen] = useState(false);
   const [dashboardOpen, setDashboardOpen] = useState(false);
   const [highlightFormulas, setHighlightFormulas] = useState(true);
   const fileRef = useRef<HTMLInputElement>(null);
   const runAgent = useServerFn(runExcelAgent);
+  const checkAi = useServerFn(getAiStatus);
+  useEffect(() => {
+    let cancelled = false;
+    void checkAi().then(
+      (status) => {
+        if (!cancelled) setAiStatus(status.configured ? "configured" : "unconfigured");
+      },
+      () => {
+        if (!cancelled) setAiStatus("unreachable");
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [checkAi]);
   const pushPowerBi = useServerFn(pushToPowerBi);
 
   const scenarioControl = findModelControl(sheets, "scenario");
@@ -225,22 +254,31 @@ function Index() {
       const list = Array.from(files);
       if (!list.length) return;
       const generation = ++importId.current;
+      const append = importMode.current === "append";
+      const before = sheets;
       const id = toast.loading(`Parsing ${list[0]?.name ?? "file"}…`);
       try {
-        const parsed: Sheet[] = [];
+        const batches: Sheet[][] = [];
         for (const file of list) {
           const s = await parseFile(file);
-          parsed.push(...s.map((sh) => ({ ...sh, name: sh.name.slice(0, 31) })));
+          batches.push(s);
         }
         toast.dismiss(id);
         if (generation !== importId.current) return;
-        loadSheets(parsed, list.map((f) => f.name).join(", "));
+        if (append && sheetsRef.current !== before)
+          throw new Error(
+            "The workbook changed during import. Add the files again to preserve your latest edits.",
+          );
+        loadSheets(
+          combineImports(batches, append ? before : []),
+          list.map((f) => f.name).join(", "),
+        );
       } catch (e) {
         toast.dismiss(id);
         toast.error(e instanceof Error ? e.message : "Could not read that file.");
       }
     },
-    [loadSheets],
+    [loadSheets, sheets],
   );
 
   useEffect(() => {
@@ -332,6 +370,18 @@ function Index() {
       toast.info("Apply or discard the pending proposal first.");
       return;
     }
+    const prerequisite = requestPrerequisite(text, sheets);
+    if (prerequisite) {
+      setInput("");
+      setPanel("chat");
+      setMobileView("assistant");
+      setMessages((m) => [
+        ...m,
+        { role: "user", content: text },
+        { role: "assistant", content: prerequisite },
+      ]);
+      return;
+    }
     const id = ++requestId.current,
       before = sheets;
     busyRef.current = true;
@@ -341,7 +391,7 @@ function Index() {
     setMessages((m) => [...m, { role: "user", content: text }]);
     setBusy(true);
     try {
-      const result = await runAgent({
+      const response = await runAgent({
         data: {
           prompt: text,
           sheets: before,
@@ -352,6 +402,11 @@ function Index() {
         },
       });
       if (id !== requestId.current) return;
+      if (!response.ok)
+        throw new Error(
+          `${response.error.message} [${response.error.code}; ${response.requestId.slice(0, 8)}]`,
+        );
+      const result = response.result;
       setFormulas(result.formulas);
       setVba(result.vba);
       setAudit({ issues: result.issues, fixes: result.fixes });
@@ -435,7 +490,7 @@ function Index() {
   const exportStyled = async () => {
     const id = toast.loading("Building styled workbook…");
     try {
-      await downloadStyledWorkbook(sheets, "sheetsmith-model");
+      await downloadStyledWorkbook(sheets, "excelgpt-model");
       toast.dismiss(id);
       toast.success("Styled .xlsx downloaded");
     } catch (e) {
@@ -461,8 +516,10 @@ function Index() {
   };
 
   return (
-    <div
-      className="flex h-dvh flex-col overflow-hidden bg-background"
+    <fieldset
+      disabled={!hydrated}
+      data-workspace-ready={hydrated ? "true" : "false"}
+      className="m-0 flex h-dvh min-w-0 flex-col overflow-hidden border-0 bg-background p-0"
       onDragOver={(e) => {
         e.preventDefault();
         setDragging(true);
@@ -471,33 +528,49 @@ function Index() {
       onDrop={(e) => {
         e.preventDefault();
         setDragging(false);
+        importMode.current = "replace";
         void handleFiles(e.dataTransfer.files);
       }}
     >
-      <header className="flex flex-wrap items-center gap-3 border-b border-border bg-card px-5 py-3">
+      <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-card px-3 py-2 sm:px-5 sm:py-3">
         <div className="flex items-center gap-2.5">
           <span className="flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <FileSpreadsheet className="size-5" />
           </span>
           <div>
-            <h1 className="text-base font-semibold leading-tight">SheetSmith</h1>
-            <p className="text-xs text-muted-foreground">AI Excel analyzer, builder & editor</p>
+            <h1 className="text-base font-semibold leading-tight">ExcelGPT</h1>
+            <p className="text-xs text-muted-foreground">AI Excel workspace</p>
           </div>
         </div>
 
-        <div
-          onClick={() => fileRef.current?.click()}
+        <button
+          type="button"
+          onClick={() => {
+            importMode.current = "replace";
+            fileRef.current?.click();
+          }}
           className={cn(
             "ml-auto flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-foreground",
             dragging && "border-primary bg-accent text-foreground",
           )}
         >
           <Upload className="size-4" />
-          <span className="max-w-[16rem] truncate">
+          <span className="max-w-[6.5rem] truncate sm:max-w-[16rem]">
             {fileName ?? "Upload .xlsx, .xls, .csv, .ods and more"}
           </span>
-        </div>
+        </button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            importMode.current = "append";
+            fileRef.current?.click();
+          }}
+        >
+          Add files
+        </Button>
         <input
+          aria-label="Import spreadsheet files"
           ref={fileRef}
           type="file"
           multiple
@@ -533,6 +606,12 @@ function Index() {
           <LayoutTemplate className="size-4" /> Templates
         </Button>
 
+        <Button size="sm" variant="outline" onClick={() => setWorkflowsOpen(true)}>
+          <Workflow className="size-4" /> Workflows
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => setCalculationOpen(true)}>
+          <Calculator className="size-4" /> Calculate
+        </Button>
         <Button size="sm" variant="outline" onClick={() => setDashboardOpen(true)}>
           <BarChart3 className="size-4" /> Dashboard
         </Button>
@@ -547,7 +626,7 @@ function Index() {
             <DropdownMenuItem onClick={() => void exportStyled()}>
               Download styled .xlsx (model colours)
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => downloadWorkbook(sheets, "xlsx", "sheetsmith")}>
+            <DropdownMenuItem onClick={() => downloadWorkbook(sheets, "xlsx", "excelgpt")}>
               Download plain .xlsx
             </DropdownMenuItem>
             <DropdownMenuItem
@@ -561,11 +640,34 @@ function Index() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Badge variant="secondary" className="gap-1.5 font-normal">
+        <Badge
+          variant="secondary"
+          className="gap-1.5 font-normal"
+          title={
+            aiStatus === "unconfigured"
+              ? "Enable the AI connector in Lovable and republish. Local workflows remain available."
+              : "A configured key does not guarantee provider availability."
+          }
+        >
           <span
-            className={cn("size-2 rounded-full", busy ? "animate-pulse bg-chart-3" : "bg-primary")}
+            className={cn(
+              "size-2 rounded-full",
+              busy
+                ? "animate-pulse bg-chart-3"
+                : aiStatus === "configured"
+                  ? "bg-primary"
+                  : "bg-amber-500",
+            )}
           />
-          AI workbook assistant
+          {busy
+            ? "AI working…"
+            : aiStatus === "configured"
+              ? "AI configured"
+              : aiStatus === "checking"
+                ? "Checking AI…"
+                : aiStatus === "unconfigured"
+                  ? "AI setup needed"
+                  : "AI status unavailable"}
         </Badge>
 
         <Popover>
@@ -588,8 +690,8 @@ function Index() {
           <PopoverContent className="w-96" align="end">
             {liveIssues.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No issues found by the static checks. This is not an Excel calculation engine;
-                validate results in Excel.
+                No issues found by the static checks. Use Calculate to check supported formula
+                results; validate advanced Excel features in Excel.
               </p>
             ) : (
               <div className="max-h-80 space-y-2 overflow-auto text-sm">
@@ -693,7 +795,11 @@ function Index() {
           onApply={() => {
             if (sheets !== proposal.before) return;
             setSheets(proposal.after);
-            setActiveIndex(0);
+            setActiveIndex(
+              proposal.after.length > proposal.before.length
+                ? proposal.after.length - 1
+                : selectedIndex,
+            );
             setProposal(null);
             toast.success("Changes applied. Undo is available.");
           }}
@@ -745,7 +851,7 @@ function Index() {
             <Button variant="ghost" size="sm" onClick={addSheet} className="h-7 px-2 text-xs">
               <Plus className="size-3.5" /> Sheet
             </Button>
-            <span className="ml-auto text-xs text-muted-foreground">
+            <span className="ml-auto hidden shrink-0 whitespace-nowrap text-xs text-muted-foreground md:inline">
               {activeSheet.rows.length} rows · paste tables directly with ⌘V
             </span>
           </div>
@@ -793,6 +899,7 @@ function Index() {
                   messages={messages}
                   input={input}
                   setInput={setInput}
+                  onWorkflow={() => setWorkflowsOpen(true)}
                   onSend={send}
                   busy={busy}
                   mode={mode}
@@ -829,6 +936,22 @@ function Index() {
         </div>
       </div>
 
+      <WorkflowHub
+        open={workflowsOpen}
+        onOpenChange={setWorkflowsOpen}
+        sheets={sheets}
+        activeIndex={selectedIndex}
+        disabled={busy || !!proposal}
+        onPropose={proposeLocal}
+      />
+      <CalculationPanel
+        open={calculationOpen}
+        onOpenChange={setCalculationOpen}
+        sheets={sheets}
+        activeIndex={selectedIndex}
+        disabled={busy || !!proposal}
+        onCopy={(sheet) => proposeLocal(sheet, "Calculated values copy", true)}
+      />
       <TemplateHub
         open={hubOpen}
         onOpenChange={setHubOpen}
@@ -851,6 +974,6 @@ function Index() {
           </p>
         </div>
       )}
-    </div>
+    </fieldset>
   );
 }

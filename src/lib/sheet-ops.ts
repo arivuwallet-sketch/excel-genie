@@ -38,5 +38,5 @@ export const SheetOpSchema = z.discriminatedUnion("op", [
 
 export type SheetOp = z.infer<typeof SheetOpSchema>;
 
-export { applyOperations } from "./workbook-operations";
-export type { OpResult } from "./workbook-operations";
+export { applyOperations } from "./workbook-operations.ts";
+export type { OpResult } from "./workbook-operations.ts";

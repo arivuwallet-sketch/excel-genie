@@ -27,3 +27,13 @@ jobs:
         run: npm run typecheck
       - name: Production build
         run: npm run build
+      - name: Install browser for end-to-end tests
+        run: npx playwright install --with-deps chromium --only-shell
+      - name: Browser workbook workflows
+        run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-test-results
+          path: test-results/
+          if-no-files-found: ignore
