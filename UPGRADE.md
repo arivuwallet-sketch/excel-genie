@@ -18,11 +18,11 @@ Limits: 30 sheets, 10,000 rows/sheet, 256 columns/sheet, 250,000 cells/workbook,
 
 AI context contains bounded row samples, profiles and explicit coverage. Large-workbook answers are not guaranteed exhaustive. Static auditing is not an Excel calculation engine and does not prove a financial model correct. Generated VBA is text only. PDF/XPS and image OCR are not implemented; convert to XLSX/CSV first. The old printable-byte PDF extraction was removed from supported inputs.
 
-Stop discards a pending response on the client; the server call can continue until its timeout. AI generation and at most one response repair share a 120-second deadline. Provider failures are not retried as invalid JSON. Restore and imports are undoable for workbook data; chat restore replaces the current chat.
+Stop aborts local Ollama requests and discards cloud responses on the client; a cloud server call can continue until its timeout. AI generation and at most one response repair share a 120-second deadline for Lovable or 300 seconds for Astra/local AI. Provider failures are not retried as invalid JSON. Restore and imports are undoable for workbook data; chat restore replaces the current chat.
 
 ## Configuration
 
-Keep LOVABLE_API_KEY server-side. Optional EXCEL_AI_FAST_MODEL and EXCEL_AI_REASONING_MODEL override the existing gateway defaults. Confirm model availability in the Lovable account. Host authentication and cost/abuse controls remain required for a public paid-AI endpoint; no new account system is introduced here.
+Local tools are the default and require no credentials. Optional local AI requires an installed Ollama runtime and downloaded model. Keep OPENAI_API_KEY (Astra Max) and LOVABLE_API_KEY (Lovable) server-side. Optional EXCEL_AI_FAST_MODEL and EXCEL_AI_REASONING_MODEL override only the Lovable gateway defaults. Confirm model availability in the Lovable account. Host authentication and cost/abuse controls remain required for a public paid-AI endpoint; no new account system is introduced here.
 
 ## Verification and release
 
@@ -75,3 +75,15 @@ No claim is made that every item in the product specification is complete or tha
 - `npm run test:e2e` exercises actual CSV upload, reconciliation, preview/apply/undo, XLSX download, worker calculation, values copies, unsupported-formula blocking and mobile workflows. CI installs Chromium and retains traces on failure.
 
 Deployment: pushing the connected branch updates the Lovable editor. Republish the app in Lovable to update the public URL, then verify a live request with the deployment's configured AI connector and credits. The configuration badge checks whether a server key is present; it does not certify provider availability. Host authentication, persistent user quotas, multi-user storage and security/compliance reviews remain necessary for a public paid production service.
+
+
+## September 28 no-credit assistant and model routing
+
+- Local tools are the default on every page load and have no provider credit balance or daily request quota. Explicit commands provide full-data summaries, static formula audits, safe cleaning, sums/averages by a column and row counts by a column. Unknown or compound requests do not partially apply edits. Existing workbook/cell/worker resource limits remain necessary.
+- Local AI connects directly from the browser to loopback Ollama, accepts downloaded GGUF completion models, checks metadata before sharing workbook context, and refuses cloud names/remote aliases. It never switches to a paid provider. Users must install a model, configure the exact allowed origin, disable Ollama Cloud and meet the browser's local-network requirements. The runtime and model are not bundled in this web app.
+- The exact GPT-6 Astra integration is an explicit paid mode: OpenAI Responses API, `gpt-6-astra`, `reasoning.effort: max`, JSON mode, no model fallback, `store: false`, server-only credentials. This does not provide GPT-6 without authorized API access or credits.
+- Source labels distinguish deterministic local tools, local model names, Astra Max and Lovable results. Tables render in chat. Remote images in assistant markdown do not load automatically. Editing, imports or Stop cannot apply an obsolete pending AI result.
+- Trimming leaves formula-like text unchanged, preventing whitespace cleanup from activating a formula. Row-only changes are visible in proposal review. Local AI shares the operation validator, atomic proposal handling, formula checks and Ask-mode restriction with cloud AI.
+- Verification adds deterministic local assistant cases, mocked OpenAI/Ollama protocol and failure cases, and browser tests for no-provider requests, exact model selection, review/apply/undo and mobile interactions. Live Astra and local-model inference quality remain deployment checks; no runtime or credentials were present in this build environment.
+
+Setup and provider limitations are detailed in README.md. Republish the synced Lovable project to update the public app.

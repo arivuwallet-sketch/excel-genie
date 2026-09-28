@@ -4,7 +4,7 @@ export const WORKSPACE_KEY = "sheetsmith.workspace.v1";
 export type Workspace = {
   version: 1;
   sheets: Sheet[];
-  messages: { role: "user" | "assistant"; content: string }[];
+  messages: { role: "user" | "assistant"; content: string; source?: string }[];
   fileName: string | null;
   savedAt: string;
 };
@@ -30,9 +30,10 @@ export function parseWorkspace(text: string): Workspace {
             m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string",
         )
         .slice(-100)
-        .map((m: { role: "user" | "assistant"; content: string }) => ({
+        .map((m: { role: "user" | "assistant"; content: string; source?: unknown }) => ({
           role: m.role,
           content: m.content.slice(0, 30000),
+          ...(typeof m.source === "string" ? { source: m.source.slice(0, 240) } : {}),
         }))
     : [];
   return {

@@ -5,11 +5,11 @@ test("missing AI configuration has actionable feedback and preserves the workboo
 }) => {
   await page.goto("/");
   await expect(page.locator('[data-workspace-ready="true"]')).toBeVisible();
-  await expect(page.getByText("AI setup needed", { exact: true })).toBeVisible();
+  await page.getByLabel("Assistant engine").selectOption("lovable");
   await page.getByLabel("Message the spreadsheet assistant").fill("Create a budget workbook");
   await page.getByRole("button", { name: "Generate proposal", exact: true }).click();
   await expect(
-    page.getByText(/Request failed.*AI is not connected for this deployment/),
+    page.getByText(/Request failed.*Lovable AI is not connected for this deployment/),
   ).toBeVisible();
   await expect(page.getByLabel("Sheet1!A1", { exact: true })).toHaveValue("");
   await expect(page.getByRole("region", { name: "Review proposed changes" })).toHaveCount(0);

@@ -13,12 +13,20 @@ export default defineConfig({
     launchOptions: process.env["PLAYWRIGHT_CHROMIUM_EXECUTABLE"]
       ? {
           executablePath: process.env["PLAYWRIGHT_CHROMIUM_EXECUTABLE"],
-          args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+          ignoreDefaultArgs: ["--enable-unsafe-swiftshader"],
+          args: [
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--disable-webgl",
+            "--disable-software-rasterizer",
+            "--use-gl=disabled",
+          ],
         }
       : {},
   },
   webServer: {
-    env: { LOVABLE_API_KEY: "" },
+    env: { LOVABLE_API_KEY: "", OPENAI_API_KEY: "" },
     command: "npm run dev -- --host 127.0.0.1 --port 5173",
     url: "http://127.0.0.1:5173",
     reuseExistingServer: !process.env["CI"],

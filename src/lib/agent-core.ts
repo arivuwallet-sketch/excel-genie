@@ -35,21 +35,28 @@ export function classifyAgentError(error: unknown): AgentFailure {
       return {
         code: "AI_AUTH",
         message:
-          "The AI connection was rejected. The project owner must check the Lovable AI connector and server key. Your workbook is unchanged.",
+          "The AI connection was rejected. The project owner must check the selected provider and server key. Your workbook is unchanged.",
         retryable: false,
       };
     if (status === 402)
       return {
         code: "AI_CREDITS",
         message:
-          "The AI service has no available credits. Add credits in Lovable to resume AI requests. Local workflows remain available.",
+          "The AI service has no available credits. Choose Local tools or Local AI to continue without provider credits, or check the selected provider's billing.",
         retryable: false,
       };
     if (status === 404)
       return {
         code: "AI_MODEL",
         message:
-          "The configured AI model is unavailable. Check the model setting or select a supported model in Lovable.",
+          "The selected AI model is unavailable for this account. Check provider access. No fallback model was used.",
+        retryable: false,
+      };
+    if (status === 422)
+      return {
+        code: "AI_DECLINED",
+        message:
+          "The model could not fulfill this request. Try a more specific spreadsheet task. Your workbook is unchanged.",
         retryable: false,
       };
     if (status === 429)

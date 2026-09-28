@@ -93,7 +93,7 @@ export function cleanSheet(sheet: Sheet, action: CleanAction): Sheet {
   if (action === "trim")
     return {
       ...sheet,
-      rows: sheet.rows.map((row) => row.map((v) => (v.startsWith("=") ? v : v.trim()))),
+      rows: sheet.rows.map((row) => row.map((v) => (v.trimStart().startsWith("=") ? v : v.trim()))),
     };
   const width = sheet.rows.reduce((n, r) => Math.max(n, r.length), 0);
   const seen = new Set<string>();
@@ -126,6 +126,10 @@ export function pivotSheet(
     }
     groups.set(key, bucket);
   }
+  if (aggregation !== "count" && [...groups.values()].some((b) => !Number.isFinite(b.total)))
+    throw new Error(
+      "A grouped total exceeds the supported numeric range. Scale the input values before summarizing.",
+    );
   return {
     name: `${sheet.name.slice(0, 22)} Summary`,
     rows: [

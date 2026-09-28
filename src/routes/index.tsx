@@ -22,6 +22,14 @@ import { CalculationPanel } from "@/components/excel/CalculationPanel";
 import { WorkflowHub } from "@/components/excel/WorkflowHub";
 import { combineImports } from "@/lib/import-batch";
 import { requestPrerequisite } from "@/lib/request-prerequisites";
+import { runLocalAssistant } from "@/lib/local-assistant";
+import { runLocalAi } from "@/lib/local-ai";
+import {
+  PROVIDER_LABELS,
+  type AgentResult,
+  type AssistantProvider,
+  type LocalAiConfig,
+} from "@/lib/assistant-types";
 import { ChangePreview, type Proposal } from "@/components/excel/ChangePreview";
 import { InsightsPanel } from "@/components/excel/InsightsPanel";
 import { validateWorkbook, MAX_ROWS, MAX_COLS } from "@/lib/workbook-limits";
@@ -100,6 +108,9 @@ function Index() {
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [mode, setMode] = useState<"ask" | "edit">("edit");
   const [quality, setQuality] = useState<"auto" | "fast" | "reasoning">("auto");
+  const [provider, setProvider] = useState<AssistantProvider>("local");
+  const [localAi, setLocalAi] = useState<LocalAiConfig | null>(null);
+  const localRequest = useRef<AbortController | null>(null);
   const [panel, setPanel] = useState<"chat" | "insights">("chat");
   const [mobileView, setMobileView] = useState<"sheet" | "assistant">("sheet");
   const [autosave, setAutosave] = useState(false);
@@ -124,9 +135,9 @@ function Index() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [workflowsOpen, setWorkflowsOpen] = useState(false);
   const [calculationOpen, setCalculationOpen] = useState(false);
-  const [aiStatus, setAiStatus] = useState<
-    "checking" | "configured" | "unconfigured" | "unreachable"
-  >("checking");
+  const [cloudStatus, setCloudStatus] = useState<{ openai: boolean; lovable: boolean } | null>(
+    null,
+  );
   const importMode = useRef<"replace" | "append">("replace");
   const [hubOpen, setHubOpen] = useState(false);
   const [dashboardOpen, setDashboardOpen] = useState(false);
@@ -138,10 +149,10 @@ function Index() {
     let cancelled = false;
     void checkAi().then(
       (status) => {
-        if (!cancelled) setAiStatus(status.configured ? "configured" : "unconfigured");
+        if (!cancelled) setCloudStatus(status);
       },
       () => {
-        if (!cancelled) setAiStatus("unreachable");
+        if (!cancelled) setCloudStatus(null);
       },
     );
     return () => {
@@ -175,6 +186,7 @@ function Index() {
     setHydrated(true);
     return () => {
       requestId.current++;
+      localRequest.current?.abort();
     };
   }, [setSheets]);
   useEffect(() => {
@@ -200,10 +212,13 @@ function Index() {
   }, [sheets, messages, fileName, autosave, hydrated]);
   const stopRequest = () => {
     requestId.current++;
+    localRequest.current?.abort();
     busyRef.current = false;
     setBusy(false);
     toast.info(
-      "Response stopped. The server request may finish, but its result will not be applied.",
+      provider === "openai" || provider === "lovable"
+        ? "Response stopped. The cloud request may finish and incur provider charges, but its result will not be applied."
+        : "Response stopped. No changes applied.",
     );
   };
   const proposeLocal = (sheet: Sheet, label: string, append = false) => {
@@ -236,6 +251,7 @@ function Index() {
     (next: Sheet[], label: string) => {
       validateWorkbook(next);
       requestId.current++;
+      localRequest.current?.abort();
       busyRef.current = false;
       setBusy(false);
       setProposal(null);
@@ -384,6 +400,8 @@ function Index() {
     }
     const id = ++requestId.current,
       before = sheets;
+    const controller = new AbortController();
+    localRequest.current = controller;
     busyRef.current = true;
     setInput("");
     setPanel("chat");
@@ -391,29 +409,53 @@ function Index() {
     setMessages((m) => [...m, { role: "user", content: text }]);
     setBusy(true);
     try {
-      const response = await runAgent({
-        data: {
-          prompt: text,
-          sheets: before,
-          history: messages.slice(-8).map((m) => ({ ...m, content: m.content.slice(0, 20000) })),
-          mode,
-          quality,
-          activeSheet: activeSheet.name,
-        },
-      });
-      if (id !== requestId.current) return;
-      if (!response.ok)
-        throw new Error(
-          `${response.error.message} [${response.error.code}; ${response.requestId.slice(0, 8)}]`,
+      const data = {
+        prompt: text,
+        sheets: before,
+        history: messages.slice(-8).map((m) => ({ ...m, content: m.content.slice(0, 20000) })),
+        mode,
+        activeSheet: activeSheet.name,
+      };
+      let result: AgentResult;
+      if (provider === "local") result = runLocalAssistant(data);
+      else if (provider === "ollama") {
+        if (!localAi)
+          throw new Error(
+            "Connect a downloaded local model above, or choose Local tools to work without setup.",
+          );
+        result = await runLocalAi(
+          data,
+          localAi,
+          AbortSignal.any([controller.signal, AbortSignal.timeout(300000)]),
         );
-      const result = response.result;
+      } else {
+        const response = await runAgent({ data: { ...data, provider, quality } });
+        if (!response.ok)
+          throw new Error(
+            `${response.error.message} [${response.error.code}; ${response.requestId.slice(0, 8)}]`,
+          );
+        result = response.result;
+      }
+      if (id !== requestId.current) return;
+      if (before !== sheetsRef.current)
+        throw new Error(
+          "The workbook changed during this request. Run it again against the current workbook; the stale result was discarded.",
+        );
       setFormulas(result.formulas);
       setVba(result.vba);
       setAudit({ issues: result.issues, fixes: result.fixes });
-      setMessages((m) => [...m, { role: "assistant", content: result.reply }]);
+      setMessages((m) => [
+        ...m,
+        { role: "assistant", content: result.reply, source: result.model },
+      ]);
       const diff = workbookDiff(before, result.sheets);
-      if (diff.total || diff.added.length || diff.removed.length) {
-        setProposal({ before, after: result.sheets, label: "AI workbook proposal" });
+      const shapeChanged = before.some((s, i) => s.rows.length !== result.sheets[i]?.rows.length);
+      if (diff.total || diff.added.length || diff.removed.length || shapeChanged) {
+        setProposal({
+          before,
+          after: result.sheets,
+          label: `${PROVIDER_LABELS[provider]} proposal`,
+        });
         toast.success("Proposal ready — review before applying");
       } else toast.success("Analysis ready");
     } catch (e) {
@@ -640,34 +682,27 @@ function Index() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Badge
-          variant="secondary"
-          className="gap-1.5 font-normal"
-          title={
-            aiStatus === "unconfigured"
-              ? "Enable the AI connector in Lovable and republish. Local workflows remain available."
-              : "A configured key does not guarantee provider availability."
-          }
-        >
+        <Badge variant="secondary" className="gap-1.5 font-normal">
           <span
             className={cn(
               "size-2 rounded-full",
               busy
                 ? "animate-pulse bg-chart-3"
-                : aiStatus === "configured"
+                : provider === "local" ||
+                    (provider === "ollama" ? !!localAi : cloudStatus?.[provider])
                   ? "bg-primary"
                   : "bg-amber-500",
             )}
           />
           {busy
-            ? "AI working…"
-            : aiStatus === "configured"
-              ? "AI configured"
-              : aiStatus === "checking"
-                ? "Checking AI…"
-                : aiStatus === "unconfigured"
-                  ? "AI setup needed"
-                  : "AI status unavailable"}
+            ? "Assistant working…"
+            : provider === "local"
+              ? "Local tools ready · no credits"
+              : provider === "ollama"
+                ? localAi
+                  ? "Local AI connected"
+                  : "Local AI setup"
+                : PROVIDER_LABELS[provider]}
         </Badge>
 
         <Popover>
@@ -902,6 +937,11 @@ function Index() {
                   onWorkflow={() => setWorkflowsOpen(true)}
                   onSend={send}
                   busy={busy}
+                  provider={provider}
+                  onProvider={setProvider}
+                  localAi={localAi}
+                  onLocalAi={setLocalAi}
+                  cloudStatus={cloudStatus}
                   mode={mode}
                   onMode={setMode}
                   quality={quality}

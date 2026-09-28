@@ -15,6 +15,12 @@ export function ChangePreview({
   onDiscard: () => void;
 }) {
   const diff = useMemo(() => workbookDiff(proposal.before, proposal.after), [proposal]);
+  const rowChanges = proposal.before.flatMap((sheet) => {
+    const after = proposal.after.find((s) => s.name === sheet.name);
+    return after && after.rows.length !== sheet.rows.length
+      ? [`${sheet.name}: ${sheet.rows.length} → ${after.rows.length} rows`]
+      : [];
+  });
   return (
     <section
       className="max-h-[45vh] shrink-0 overflow-auto border-b border-primary/30 bg-accent/30 p-4"
@@ -25,6 +31,9 @@ export function ChangePreview({
         {diff.total.toLocaleString()} changed cells · {diff.added.length} added sheets ·{" "}
         {diff.removed.length} removed sheets
       </p>
+      {rowChanges.length > 0 && (
+        <p className="text-xs text-muted-foreground">{rowChanges.join(" · ")}</p>
+      )}
       {diff.removed.length > 0 && (
         <p className="text-xs text-destructive">Removed sheets: {diff.removed.join(", ")}</p>
       )}

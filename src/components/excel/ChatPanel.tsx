@@ -1,6 +1,10 @@
 import { Loader2, Send, ShieldCheck, Sparkles, Terminal } from "lucide-react";
 import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { LocalAiSettings } from "./LocalAiSettings";
+import { LOCAL_PROMPTS } from "@/lib/local-assistant";
+import { PROVIDER_LABELS, type AssistantProvider, type LocalAiConfig } from "@/lib/assistant-types";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-export type ChatMessage = { role: "user" | "assistant"; content: string };
+export type ChatMessage = { role: "user" | "assistant"; content: string; source?: string };
 
 export const QUICK_PROMPTS = [
   "Reconcile Sheet A and Sheet B and flag unmatched items",
@@ -28,6 +32,11 @@ type Props = {
   onSend: (prompt?: string) => void;
   onWorkflow: () => void;
   busy: boolean;
+  provider: AssistantProvider;
+  onProvider: (value: AssistantProvider) => void;
+  localAi: LocalAiConfig | null;
+  onLocalAi: (value: LocalAiConfig | null) => void;
+  cloudStatus: { openai: boolean; lovable: boolean } | null;
   mode: "ask" | "edit";
   onMode: (value: "ask" | "edit") => void;
   quality: "auto" | "fast" | "reasoning";
@@ -46,6 +55,11 @@ export function ChatPanel({
   onSend,
   onWorkflow,
   busy,
+  provider,
+  onProvider,
+  localAi,
+  onLocalAi,
+  cloudStatus,
   mode,
   onMode,
   quality,
@@ -56,6 +70,7 @@ export function ChatPanel({
   issues = [],
   fixes = [],
 }: Props) {
+  const prompts = provider === "local" ? LOCAL_PROMPTS : QUICK_PROMPTS;
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -63,13 +78,31 @@ export function ChatPanel({
 
   return (
     <aside className="flex h-full w-full flex-col bg-sidebar text-sidebar-foreground">
-      <div className="border-b border-sidebar-border px-4 py-3">
+      <div className="max-h-[50%] shrink-0 overflow-y-auto border-b border-sidebar-border px-4 py-3">
         <h2 className="flex items-center gap-2 text-sm font-semibold">
-          <Sparkles className="size-4 text-sidebar-primary" /> AI Command Center
+          <Sparkles className="size-4 text-sidebar-primary" /> Spreadsheet assistant
         </h2>
         <p className="mt-1 text-xs text-sidebar-foreground/60">
           Describe the spreadsheet work — building, editing, reconciling or auditing.
         </p>
+        <label className="mt-3 block text-xs">
+          Run with
+          <select
+            aria-label="Assistant engine"
+            value={provider}
+            onChange={(e) => onProvider(e.target.value as AssistantProvider)}
+            disabled={busy}
+            className="mt-1 w-full rounded border border-sidebar-border bg-sidebar p-2 text-xs"
+          >
+            <option value="local">Local tools · no credits</option>
+            <option value="ollama">Local AI · Ollama · no credits</option>
+            <option value="openai">GPT-6 Astra · Max · paid API</option>
+            <option value="lovable">Lovable AI · provider credits</option>
+          </select>
+        </label>
+        {provider === "ollama" && (
+          <LocalAiSettings config={localAi} onConfig={onLocalAi} disabled={busy} />
+        )}
         <div className="mt-3 flex gap-2">
           <select
             aria-label="AI mode"
@@ -81,34 +114,49 @@ export function ChatPanel({
             <option value="edit">Build / edit</option>
             <option value="ask">Ask · read only</option>
           </select>
-          <select
-            aria-label="AI quality"
-            value={quality}
-            onChange={(e) => onQuality(e.target.value as typeof quality)}
-            disabled={busy}
-            className="min-w-0 flex-1 rounded border border-sidebar-border bg-sidebar p-2 text-xs"
-          >
-            <option value="auto">Auto quality</option>
-            <option value="fast">Fast</option>
-            <option value="reasoning">Reasoning</option>
-          </select>
+          {provider === "lovable" && (
+            <select
+              aria-label="AI quality"
+              value={quality}
+              onChange={(e) => onQuality(e.target.value as typeof quality)}
+              disabled={busy}
+              className="min-w-0 flex-1 rounded border border-sidebar-border bg-sidebar p-2 text-xs"
+            >
+              <option value="auto">Auto quality</option>
+              <option value="fast">Fast</option>
+              <option value="reasoning">Reasoning</option>
+            </select>
+          )}
         </div>
         <p className="mt-2 text-[11px] text-sidebar-foreground/60">
-          Workbook samples and profiles are sent to the configured AI provider when you run a
-          prompt. Proposed edits require review.
+          {provider === "local"
+            ? "Runs in your browser without API keys, provider credits or daily quotas. Uses explicit commands and full-data calculations. Edits require review."
+            : provider === "ollama"
+              ? "Workbook samples and profiles go directly to your local model. No cloud fallback. Edits require review."
+              : `${PROVIDER_LABELS[provider]}: ${cloudStatus?.[provider] ? "server key configured; live availability unverified" : "server setup required"}. Running a prompt sends workbook samples and profiles to this paid provider. Edits require review.`}
         </p>
+        <button
+          type="button"
+          onClick={onWorkflow}
+          disabled={busy}
+          className="mt-2 text-xs underline"
+        >
+          Open guided workflows
+        </button>
       </div>
 
-      <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+      <div className="min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
         {messages.length === 0 && (
           <div className="space-y-2">
             <p className="text-xs font-medium uppercase tracking-wide text-sidebar-foreground/50">
               Pre-built prompts
             </p>
-            {QUICK_PROMPTS.map((p) => (
+            {prompts.map((p) => (
               <button
                 key={p}
-                onClick={() => (p === QUICK_PROMPTS[0] ? onWorkflow() : onSend(p))}
+                onClick={() =>
+                  provider !== "local" && p === QUICK_PROMPTS[0] ? onWorkflow() : onSend(p)
+                }
                 disabled={busy}
                 className="w-full rounded-md border border-sidebar-border bg-sidebar-accent/50 px-3 py-2 text-left text-xs leading-snug transition-colors hover:bg-sidebar-accent disabled:opacity-50"
               >
@@ -128,8 +176,33 @@ export function ChatPanel({
                 : "bg-sidebar-accent/60",
             )}
           >
-            <div className="prose prose-sm prose-invert max-w-none prose-p:my-1.5 prose-li:my-0.5 prose-headings:text-sm">
-              <ReactMarkdown>{m.content}</ReactMarkdown>
+            {m.source && (
+              <p className="mb-1 break-words text-[10px] text-sidebar-foreground/60">{m.source}</p>
+            )}
+            <div className="prose prose-sm prose-invert max-w-none overflow-x-auto break-words prose-p:my-1.5 prose-li:my-0.5 prose-headings:text-sm prose-th:whitespace-nowrap prose-th:px-2 prose-td:px-2">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  img: ({ alt }) => <span>{alt || "Image"}</span>,
+                  table: ({ children }) => (
+                    <table className="my-2 w-full border-collapse text-left text-xs">
+                      {children}
+                    </table>
+                  ),
+                  th: ({ children }) => (
+                    <th className="whitespace-nowrap border-b border-sidebar-border px-2 py-1.5 font-semibold">
+                      {children}
+                    </th>
+                  ),
+                  td: ({ children }) => (
+                    <td className="whitespace-nowrap border-b border-sidebar-border/50 px-2 py-1.5">
+                      {children}
+                    </td>
+                  ),
+                }}
+              >
+                {m.content}
+              </ReactMarkdown>
               <button
                 type="button"
                 className="mt-2 text-[11px] text-sidebar-foreground/60"
@@ -232,10 +305,13 @@ export function ChatPanel({
       <div className="border-t border-sidebar-border p-3">
         {messages.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1">
-            {QUICK_PROMPTS.slice(0, 3).map((p) => (
+            {prompts.slice(0, 3).map((p) => (
               <Badge
                 key={p}
-                onClick={() => !busy && (p === QUICK_PROMPTS[0] ? onWorkflow() : onSend(p))}
+                onClick={() =>
+                  !busy &&
+                  (provider !== "local" && p === QUICK_PROMPTS[0] ? onWorkflow() : onSend(p))
+                }
                 className="cursor-pointer bg-sidebar-accent text-[10px] font-normal text-sidebar-foreground hover:bg-sidebar-primary/30"
               >
                 {p.split(" ").slice(0, 3).join(" ")}…
@@ -254,12 +330,16 @@ export function ChatPanel({
           }}
           aria-label="Message the spreadsheet assistant"
           maxLength={12000}
-          placeholder="e.g. Reconcile the bank sheet against the ledger and add a variance column"
+          placeholder={
+            provider === "local"
+              ? 'Try: Summarize this sheet, or Sum "Amount" by "Category"'
+              : "Describe the spreadsheet result you need"
+          }
           className="min-h-[76px] resize-none border-sidebar-border bg-sidebar-accent/40 text-sm text-sidebar-foreground placeholder:text-sidebar-foreground/40"
         />
         <Button onClick={() => onSend()} disabled={busy || !input.trim()} className="mt-2 w-full">
           {busy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
-          {mode === "ask" ? "Ask AI" : "Generate proposal"}
+          {mode === "ask" ? "Ask" : "Generate proposal"}
         </Button>
       </div>
     </aside>
