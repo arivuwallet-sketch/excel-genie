@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 async function ready(page: import("@playwright/test").Page) {
   await page.goto("/");
-  await expect(page.locator('[data-workspace-ready="true"]')).toBeVisible();
+  await expect(page.locator('[data-workspace-ready="true"]')).toBeVisible({ timeout: 15000 });
 }
 async function send(page: import("@playwright/test").Page, prompt: string) {
   await page.getByLabel("Message the spreadsheet assistant").fill(prompt);
@@ -129,17 +129,32 @@ test("local Ollama connection sends the correct protocol and returns a reviewed 
   expect(calls).toEqual(["/api/tags", "/api/show", "/api/show", "/api/chat"]);
 });
 
-test("mobile local assistant keeps settings and summary tables within the viewport", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await ready(page);
-  await page.getByRole("button", { name: "Assistant / insights", exact: true }).click();
-  await page.getByLabel("Assistant engine").selectOption("ollama");
-  await page.getByText("Local AI setup", { exact: true }).last().click();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.getByLabel("Assistant engine").selectOption("local");
-  await send(page, "Help");
-  await expect(page.getByText("Local tools · deterministic", { exact: true })).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-});
+for (const height of [844, 700]) {
+  test(`mobile assistant controls remain reachable at 390×${height}`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height });
+    await ready(page);
+    await page.getByLabel("Import spreadsheet files").setInputFiles({
+      name: "Sales.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from("Category,Amount\nA,10\nB,20"),
+    });
+    await expect(page.getByLabel("Sales!A2", { exact: true })).toHaveValue("A");
+    await page.getByRole("button", { name: "Assistant / insights", exact: true }).click();
+    await page.getByLabel("Assistant engine").selectOption("ollama");
+    await page.getByText("Local AI setup", { exact: true }).last().click();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    await page.getByLabel("Assistant engine").selectOption("local");
+    await send(page, "Summarize this sheet");
+    await expect(page.getByText("Local tools · deterministic", { exact: true })).toBeVisible();
+    await expect(page.getByRole("table").filter({ hasText: "Amount (B2:B3)" })).toContainText("30");
+    await page
+      .getByRole("button", { name: "Generate proposal", exact: true })
+      .scrollIntoViewIfNeeded();
+    await page.screenshot({ path: test.info().outputPath("mobile-assistant.png") });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+  });
+}

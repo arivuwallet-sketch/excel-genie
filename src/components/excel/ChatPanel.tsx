@@ -77,7 +77,7 @@ export function ChatPanel({
   }, [messages, busy]);
 
   return (
-    <aside className="flex h-full w-full flex-col bg-sidebar text-sidebar-foreground">
+    <aside className="flex h-full min-h-0 w-full flex-col overflow-y-auto bg-sidebar text-sidebar-foreground">
       <div className="max-h-[50%] shrink-0 overflow-y-auto border-b border-sidebar-border px-4 py-3">
         <h2 className="flex items-center gap-2 text-sm font-semibold">
           <Sparkles className="size-4 text-sidebar-primary" /> Spreadsheet assistant
@@ -145,7 +145,7 @@ export function ChatPanel({
         </button>
       </div>
 
-      <div className="min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
+      <div className="min-h-32 min-w-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
         {messages.length === 0 && (
           <div className="space-y-2">
             <p className="text-xs font-medium uppercase tracking-wide text-sidebar-foreground/50">
@@ -302,7 +302,7 @@ export function ChatPanel({
         <div ref={endRef} />
       </div>
 
-      <div className="border-t border-sidebar-border p-3">
+      <div className="shrink-0 border-t border-sidebar-border p-3">
         {messages.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1">
             {prompts.slice(0, 3).map((p) => (
