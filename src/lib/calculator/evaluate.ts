@@ -1,33 +1,49 @@
-/**
- * ExcelGPT v2 — extended formula engine ("beyond core").
- *
- * A superset of ./evaluate.ts: every function of the original bounded scalar
- * engine is preserved verbatim, plus ~95 additional functions that accountants
- * and analysts use daily: financial (PMT/IPMT/PPMT/FV/PV/RATE/NPER/NPV/IRR/
- * XNPV/XIRR/depreciation), date/time (DATE/EDATE/EOMONTH/DATEDIF/NETWORKDAYS/
- * WORKDAY/YEARFRAC...), text (TEXTJOIN/SUBSTITUTE/XLOOKUP-era text), statistics
- * (MEDIAN/STDEV/PERCENTILE/LARGE/SMALL/SLOPE/FORECAST...), modern lookups
- * (XLOOKUP/XMATCH/CHOOSE/HLOOKUP), logical (IFS/SWITCH/XOR/IFNA) and dynamic
- * arrays (FILTER/UNIQUE/SORT/SORTBY/SEQUENCE/TRANSPOSE/TEXTSPLIT/VSTACK/
- * HSTACK/TOCOL/TOROW/CHOOSECOLS/CHOOSEROWS/TAKE/DROP/SUMPRODUCT).
- *
- * Safety invariants identical to the base engine: no eval, no code generation,
- * no network, no nondeterminism (RAND/NOW/TODAY stay unsupported), explicit
- * #ERROR!-style codes, bounded output, and array results are returned as
- * Scalar[][] so the caller can spill them (see ../calculation-v2.ts).
- */
 import { CalcError, type Node, type Scalar } from "./parser.ts";
-import { SUPPORTED_FUNCTIONS } from "./evaluate.ts";
-
-export type Value = Scalar | Scalar[][];
-export type RefNode = Extract<Node, { kind: "ref" }>;
+type Value = Scalar | Scalar[][];
+export const SUPPORTED_FUNCTIONS = [
+  "SUM",
+  "AVERAGE",
+  "MIN",
+  "MAX",
+  "COUNT",
+  "COUNTA",
+  "COUNTBLANK",
+  "IF",
+  "IFERROR",
+  "AND",
+  "OR",
+  "NOT",
+  "SUMIF",
+  "COUNTIF",
+  "SUMIFS",
+  "COUNTIFS",
+  "VLOOKUP",
+  "INDEX",
+  "MATCH",
+  "ROUND",
+  "ROUNDUP",
+  "ROUNDDOWN",
+  "ABS",
+  "INT",
+  "LEN",
+  "LEFT",
+  "RIGHT",
+  "MID",
+  "TRIM",
+  "UPPER",
+  "LOWER",
+  "CONCATENATE",
+  "ISNUMBER",
+  "ISTEXT",
+  "ISBLANK",
+] as const;
 const unsupported = () => {
   throw new CalcError("#UNSUPPORTED!");
 };
-const scalar = (value: Value): Scalar => {
+function scalar(value: Value): Scalar {
   if (Array.isArray(value)) return unsupported();
   return value;
-};
+}
 function number(value: Value): number {
   const v = scalar(value);
   if (v === null || v === "") return 0;
@@ -79,6 +95,7 @@ function criterion(criteria: Value) {
   const numeric = target.trim() !== "" && /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(target);
   const expected = numeric ? Number(target) : target;
   return (v: Scalar) => {
+    // Text and numbers are distinct in ranges; blank criteria match empty cells.
     if (numeric && typeof v !== "number") return op === "<>";
     const cmp = compare(v, expected);
     return op === "="
@@ -95,116 +112,256 @@ function criterion(criteria: Value) {
   };
 }
 
-/* ---------------------------------- dates --------------------------------- */
-const MS_PER_DAY = 86400 * 1000;
-const EPOCH = 25569; // Excel serial of 1970-01-01T00:00:00Z (1900 date system, 1899-12-30 base)
-const utcToSerial = (ms: number) => ms / MS_PER_DAY + EPOCH;
-const serialToUtc = (serial: number) => new Date(Math.round((serial - EPOCH) * MS_PER_DAY));
-const DATE_TEXT =
-  /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2}(?:\.\d+)?))?)?$/;
-function dateSerial(v: Value): number | null {
-  const s = scalar(v);
-  if (typeof s === "number" && Number.isFinite(s)) return s;
-  if (typeof s === "string") {
-    const m = DATE_TEXT.exec(s.trim());
-    if (m)
-      return utcToSerial(
-        Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +(m[4] ?? 0), +(m[5] ?? 0), +(m[6] ?? 0)),
-      );
-  }
-  return null;
-}
-const requireDate = (v: Value): number => {
-  const serial = dateSerial(v);
-  if (serial === null) throw new CalcError("#VALUE!");
-  return serial;
-};
-function shiftMonths(serial: number, months: number, keepDay: boolean): number {
-  const d = serialToUtc(serial);
-  const total = d.getUTCFullYear() * 12 + d.getUTCMonth() + Math.trunc(months);
-  const year = Math.floor(total / 12),
-    month = total - year * 12;
-  const last = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-  const day = keepDay ? Math.min(d.getUTCDate(), last) : last;
-  return utcToSerial(Date.UTC(year, month, day));
-}
-const daysInMonth = (year: number, month: number) =>
-  new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-const addYearsClamped = (d: Date, years: number) => {
-  const y = d.getUTCFullYear() + years;
-  return new Date(Date.UTC(y, d.getUTCMonth(), Math.min(d.getUTCDate(), daysInMonth(y, d.getUTCMonth()))));
-};
-
-/* ------------------------------- financial ------------------------------- */
-const pmtCompute = (rate: number, nper: number, pv: number, fv: number, type: number) => {
-  if (!Number.isFinite(nper) || nper <= 0) throw new CalcError("#NUM!");
-  if (rate === 0) return -(pv + fv) / nper;
-  const grown = Math.pow(1 + rate, nper);
-  return (-(rate * (fv + pv * grown)) / ((1 + rate * type) * (grown - 1))) as number;
-};
-/** Iterative amortization walk shared by IPMT/PPMT/CUMIPMT/CUMPRINC. */
-function amortize(
-  rate: number,
-  nper: number,
-  pv: number,
-  fv: number,
-  type: number,
-): { interest: number[]; principal: number[] } {
-  const payment = pmtCompute(rate, nper, pv, fv, type);
-  const interest: number[] = [],
-    principal: number[] = [];
-  let balance = pv;
-  for (let k = 1; k <= nper; k++) {
-    const i = type === 1 && k === 1 ? 0 : balance * rate;
-    const p = -payment - i;
-    interest.push(i);
-    principal.push(p);
-    balance -= p;
-  }
-  return { interest, principal };
-}
-/** Bisection root find over a bounded interval; used by RATE/IRR/XIRR. */
-function solveRate(f: (r: number) => number): number {
-  const lo = -0.999999,
-    hi = 10;
-  const STEPS = 400;
-  let prevR = lo,
-    prevY = f(prevR);
-  if (!Number.isFinite(prevY)) prevY = f(lo + 1e-9);
-  for (let i = 1; i <= STEPS; i++) {
-    const r = lo + ((hi - lo) * i) / STEPS;
-    const y = f(r);
-    if (!Number.isFinite(y)) continue;
-    if (y === 0) return r;
-    if (prevY * y < 0) {
-      let a = prevR,
-        b = r,
-        ya = prevY;
-      for (let k = 0; k < 100; k++) {
-        const mid = (a + b) / 2,
-          ym = f(mid);
-        if (!Number.isFinite(ym)) break;
-        if (ya * ym <= 0) b = mid;
-        else {
-          a = mid;
-          ya = ym;
-        }
-      }
-      return (a + b) / 2;
+export function evaluate(tree: Node, read: (ref: Extract<Node, { kind: "ref" }>) => Value): Value {
+  const rawVisit = (node: Node): Value => {
+    if (node.kind === "literal") return node.value;
+    if (node.kind === "ref") return read(node);
+    if (node.kind === "unary") {
+      const n = number(visit(node.arg));
+      return node.op === "%" ? n / 100 : node.op === "-" ? -n : n;
     }
-    prevR = r;
-    prevY = y;
-  }
-  throw new CalcError("#NUM!");
+    if (node.kind === "binary") {
+      const a = visit(node.left),
+        b = visit(node.right);
+      if (node.op === "&") return text(a) + text(b);
+      if (["=", "<>", "<", ">", "<=", ">="].includes(node.op)) {
+        const cmp = compare(scalar(a), scalar(b));
+        return node.op === "="
+          ? cmp === 0
+          : node.op === "<>"
+            ? cmp !== 0
+            : node.op === "<"
+              ? cmp < 0
+              : node.op === ">"
+                ? cmp > 0
+                : node.op === "<="
+                  ? cmp <= 0
+                  : cmp >= 0;
+      }
+      const x = number(a),
+        y = number(b);
+      if (node.op === "/" && y === 0) throw new CalcError("#DIV/0!");
+      return node.op === "+"
+        ? x + y
+        : node.op === "-"
+          ? x - y
+          : node.op === "*"
+            ? x * y
+            : node.op === "/"
+              ? x / y
+              : x ** y;
+    }
+    const name = node.name;
+    if (name.startsWith("#")) throw new CalcError(name);
+    if (!(SUPPORTED_FUNCTIONS as readonly string[]).includes(name)) return unsupported();
+    const arity = (min: number, max = min) => {
+      if (node.args.length < min || node.args.length > max) throw new CalcError("#VALUE!");
+    };
+    // Lazy conditionals prevent unused branches from creating false errors.
+    if (name === "IF") {
+      arity(2, 3);
+      return truth(visit(node.args[0]!))
+        ? visit(node.args[1]!)
+        : node.args[2]
+          ? visit(node.args[2])
+          : false;
+    }
+    if (name === "IFERROR") {
+      arity(2);
+      try {
+        return visit(node.args[0]!);
+      } catch (e) {
+        if (!(e instanceof CalcError) || ["#UNSUPPORTED!", "#LIMIT!", "#CYCLE!"].includes(e.code))
+          throw e;
+        return visit(node.args[1]!);
+      }
+    }
+    const args = node.args.map(visit),
+      first = args[0] ?? null;
+    const range = (v: Value): Scalar[][] => (Array.isArray(v) ? v : [[v]]);
+    const flat = args.flatMap((a) => (Array.isArray(a) ? a.flat() : [a]));
+    if (["SUM", "AVERAGE", "MIN", "MAX", "COUNT"].includes(name)) {
+      arity(1, 255);
+      const nums: number[] = [];
+      args.forEach((a, i) => {
+        if (Array.isArray(a) || node.args[i]!.kind === "ref") {
+          for (const v of range(a).flat()) if (typeof v === "number") nums.push(v);
+        } else if (name === "COUNT") {
+          if (a !== null) {
+            try {
+              nums.push(number(a));
+            } catch {
+              /* COUNT ignores nonnumeric literals. */
+            }
+          }
+        } else nums.push(number(a));
+      });
+      if (name === "COUNT") return nums.length;
+      if (name === "AVERAGE" && !nums.length) throw new CalcError("#DIV/0!");
+      if (name === "MIN" || name === "MAX")
+        return nums.length
+          ? nums.reduce((a, b) => (name === "MIN" ? Math.min(a, b) : Math.max(a, b)))
+          : 0;
+      const sum = nums.reduce((a, b) => a + b, 0);
+      return name === "SUM" ? sum : sum / nums.length;
+    }
+    if (name === "COUNTA") {
+      arity(1, 255);
+      return flat.filter((v) => v !== null).length;
+    }
+    if (name === "COUNTBLANK") {
+      arity(1);
+      return flat.filter((v) => v === null || v === "").length;
+    }
+    if (name === "AND" || name === "OR") {
+      arity(1, 255);
+      const bools = flat.filter((v) => typeof v !== "string" && v !== null).map(truth);
+      if (!bools.length) throw new CalcError("#VALUE!");
+      return name === "AND" ? bools.every(Boolean) : bools.some(Boolean);
+    }
+    if (name === "NOT") {
+      arity(1);
+      return !truth(first);
+    }
+    if (["SUMIF", "COUNTIF", "SUMIFS", "COUNTIFS"].includes(name)) {
+      const sum = name.startsWith("SUM");
+      if (name.endsWith("IFS")) {
+        if (args.length < (sum ? 3 : 2) || args.length % 2 !== (sum ? 1 : 0))
+          throw new CalcError("#VALUE!");
+      } else arity(2, sum ? 3 : 2);
+      const values = range(name === "SUMIF" ? (args[2] ?? first) : first);
+      const pairs: [Scalar[][], ReturnType<typeof criterion>][] = [];
+      if (name.endsWith("IFS")) {
+        for (let i = sum ? 1 : 0; i < args.length; i += 2)
+          pairs.push([range(args[i]!), criterion(args[i + 1]!)]);
+      } else pairs.push([range(first), criterion(args[1]!)]);
+      if (
+        pairs.some(
+          ([r]) =>
+            r.length !== values.length || r.some((row, i) => row.length !== values[i]!.length),
+        )
+      )
+        throw new CalcError("#VALUE!");
+      let output = 0;
+      values.forEach((row, r) =>
+        row.forEach((v, c) => {
+          if (pairs.every(([data, test]) => test(data[r]![c]!)))
+            output += sum ? (typeof v === "number" ? v : 0) : 1;
+        }),
+      );
+      return output;
+    }
+    if (name === "VLOOKUP") {
+      arity(4);
+      if (truth(args[3]!)) return unsupported();
+      const table = range(args[1]!);
+      const col = number(args[2]!);
+      if (!Number.isInteger(col) || col < 1 || col > (table[0]?.length ?? 0))
+        throw new CalcError("#REF!");
+      const lookup = scalar(first);
+      const match =
+        typeof lookup === "string" && /[*?~]/.test(lookup)
+          ? criterion(`=${lookup}`)
+          : (v: Scalar) => compare(v, lookup) === 0;
+      const row = table.find((r) => match(r[0]!));
+      if (!row) throw new CalcError("#N/A");
+      return row[col - 1] ?? 0;
+    }
+    if (name === "MATCH") {
+      arity(3);
+      if (number(args[2]!) !== 0) return unsupported();
+      const table = range(args[1]!);
+      if (table.length > 1 && (table[0]?.length ?? 0) > 1) throw new CalcError("#N/A");
+      const lookup = scalar(first);
+      const match =
+        typeof lookup === "string" && /[*?~]/.test(lookup)
+          ? criterion(`=${lookup}`)
+          : (v: Scalar) => compare(v, lookup) === 0;
+      const index = table.flat().findIndex(match);
+      if (index < 0) throw new CalcError("#N/A");
+      return index + 1;
+    }
+    if (name === "INDEX") {
+      arity(2, 3);
+      const table = range(first),
+        horizontal = args.length === 2 && table.length === 1,
+        row = horizontal ? 1 : number(args[1]!),
+        col = horizontal ? number(args[1]!) : args[2] === undefined ? 1 : number(args[2]);
+      if (
+        !Number.isInteger(row) ||
+        !Number.isInteger(col) ||
+        row < 1 ||
+        col < 1 ||
+        !table[row - 1] ||
+        col > table[row - 1]!.length
+      )
+        throw new CalcError("#REF!");
+      return table[row - 1]![col - 1] ?? 0;
+    }
+    if (["ROUND", "ROUNDUP", "ROUNDDOWN"].includes(name)) {
+      arity(2);
+      const n = number(first),
+        digits = Math.trunc(number(args[1]!));
+      if (Math.abs(digits) > 15) return unsupported();
+      const factor = 10 ** digits,
+        scaled = Math.abs(n) * factor;
+      return (
+        (Math.sign(n) *
+          (name === "ROUNDUP"
+            ? Math.ceil(scaled)
+            : name === "ROUNDDOWN"
+              ? Math.floor(scaled)
+              : Math.floor(scaled + 0.5 + Number.EPSILON * scaled))) /
+        factor
+      );
+    }
+    if (name === "ABS" || name === "INT") {
+      arity(1);
+      return name === "ABS" ? Math.abs(number(first)) : Math.floor(number(first));
+    }
+    if (name === "ISNUMBER" || name === "ISTEXT" || name === "ISBLANK") {
+      arity(1);
+      const v = scalar(first);
+      return name === "ISNUMBER"
+        ? typeof v === "number"
+        : name === "ISTEXT"
+          ? typeof v === "string"
+          : v === null;
+    }
+    if (name === "CONCATENATE") {
+      arity(1, 255);
+      return args.map(text).join("");
+    }
+    if (name === "LEFT" || name === "RIGHT") {
+      arity(1, 2);
+      const n = args[1] === undefined ? 1 : Math.trunc(number(args[1]));
+      if (n < 0) throw new CalcError("#VALUE!");
+      return name === "LEFT" ? text(first).slice(0, n) : n === 0 ? "" : text(first).slice(-n);
+    }
+    if (name === "MID") {
+      arity(3);
+      const start = Math.trunc(number(args[1]!)),
+        length = Math.trunc(number(args[2]!));
+      if (start < 1 || length < 0) throw new CalcError("#VALUE!");
+      return text(first).slice(start - 1, start - 1 + length);
+    }
+    arity(1);
+    if (name === "LEN") return text(first).length;
+    if (name === "TRIM")
+      return text(first)
+        .replace(/^ +| +$/g, "")
+        .replace(/ +/g, " ");
+    if (name === "UPPER") return text(first).toUpperCase();
+    if (name === "LOWER") return text(first).toLowerCase();
+    return unsupported();
+  };
+  const visit = (node: Node): Value => {
+    const value = rawVisit(node);
+    if (typeof value === "number" && !Number.isFinite(value)) throw new CalcError("#NUM!");
+    if (typeof value === "string" && value.length > 10000) throw new CalcError("#LIMIT!");
+    return value;
+  };
+  const value = visit(tree);
+  if (typeof value === "number" && !Number.isFinite(value)) throw new CalcError("#NUM!");
+  return value;
 }
-
-/* --------------------------------- arrays --------------------------------- */
-const toArray = (v: Value): Scalar[][] => (Array.isArray(v) ? v : [[v]]);
-const flat = (v: Value): Scalar[] => (Array.isArray(v) ? v.flat() : [v]);
-const numbers = (v: Value): number[] => flat(v).filter((n): n is number => typeof n === "number");
-const CELL_CAP = 10000;
-const capCheck = (rows: number, cols: number) => {
-  if (rows * cols > CELL_CAP) throw new CalcError("#LIMIT!");
-};
-const CELL_JOIN = (v: Scalar) => `${typeof v}:${String(v)}`;
-const rowKey = (row: Scalar[]) => row.map(CELL_JOIN).join("");
