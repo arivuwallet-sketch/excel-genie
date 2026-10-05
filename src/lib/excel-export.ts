@@ -1,4 +1,5 @@
 import { numericValue } from "./workbook-intelligence.ts";
+import { calculateWorkbook } from "./calculation.ts";
 import { sanitizeSheetName, stripIllegalXmlChars, type Sheet } from "./spreadsheet.ts";
 
 /** Industry-standard modelling colours. */
@@ -25,16 +26,25 @@ const RATIO_FMT = "#,##0.00;(#,##0.00);-";
 const COUNT_FMT = "#,##0;(#,##0);-";
 
 const PERCENT_RE =
-  /(%|\bpct\b|percent|\brate\b|rates\b|margin|growth|retention|churn|yield|irr|wacc|cagr|cost of (equity|debt|capital)|tax rate|discount rate|utili[sz]ation|occupancy|allocation|weight|share of|contribution|payout|escalat|inflation|attrition|conversion|uplift|premium %|spread)/i;
+  /(%|\bpct\b|percent|(?<!run-)\brate\b|rates\b|margin|growth|retention|churn|yield|irr|wacc|cagr|cost of (equity|debt|capital)|tax rate|discount rate|utili[sz]ation|occupancy|allocation|weight|share of|contribution|payout|escalat|inflation|attrition|conversion|uplift|premium %|spread|win rate|hit rate|variance %|yoy|mom\b|qoq|change %|% change|mix\b|penetration|completion)/i;
 const MULTIPLE_RE =
   /(multiple|moic|\bx\b|ev\/|p\/e|ebitda\/|turnover|dscr|llcr|coverage|\bbeta\b|\bratio\b|current ratio|quick ratio|magic number|leverage)/i;
 const COUNT_RE =
-  /(count|number of|#|headcount|units|qty|quantity|days|periods|employees|customers|logos|shares outstanding|iterations)/i;
+  /(count|number of|#|headcount|units|qty|quantity|days|periods|employees|customers|logos|shares outstanding|iterations|orders|deals|transactions|tickets|visits|leads)/i;
+/** Explicit money units in a label beat rate words, e.g. "Freight rate ($/mt)". */
+const MONEY_UNIT_RE = /(\$|usd|eur|gbp|£|€|\(\$?k\)|\(\$?mm?\)|per unit|\/unit|\/mt|\/hr|\/hour)/i;
 
 /** Decide the number format for a cell from its row label and column header. */
 function pickFormat(rowLabel: string, colHeader: string, raw: string, value: number | null) {
   const ctx = `${rowLabel} ${colHeader}`;
-  if (raw.includes("%") || PERCENT_RE.test(ctx)) return PERCENT_FMT;
+  if (raw.includes("%")) return PERCENT_FMT;
+  const percentLabel = /%|\bpct\b|percent/i.test(ctx);
+  if (!percentLabel && MONEY_UNIT_RE.test(ctx)) return CURRENCY_FMT;
+  if (PERCENT_RE.test(ctx)) {
+    // A whole number like 8 or 12 under a rate label is not 800% — keep it a plain figure.
+    if (value !== null && Math.abs(value) >= 2) return RATIO_FMT;
+    return PERCENT_FMT;
+  }
   if (MULTIPLE_RE.test(ctx)) return MULTIPLE_FMT;
   if (COUNT_RE.test(ctx)) return COUNT_FMT;
   // A bare fraction that is clearly not money (e.g. 0.24, 1.35) reads better as a ratio.
@@ -42,6 +52,21 @@ function pickFormat(rowLabel: string, colHeader: string, raw: string, value: num
   if (value !== null && !Number.isInteger(value) && Math.abs(value) < 100 && !/\$/.test(raw))
     return RATIO_FMT;
   return CURRENCY_FMT;
+}
+
+const isLabel = (v: string | undefined) =>
+  !!v && !v.startsWith("=") && !isNumeric(v) && /[A-Za-z]/.test(v);
+
+/** Nearest text label to the left of a cell in the same row (handles labels outside column A). */
+function rowLabelFor(row: string[], c: number) {
+  for (let i = c - 1; i >= 0; i--) if (isLabel(row[i])) return row[i]!;
+  return "";
+}
+
+/** Nearest text header above a cell in the same column (handles stacked blocks/dashboards). */
+function colHeaderFor(rows: string[][], r: number, c: number) {
+  for (let i = r - 1; i >= 0 && i >= r - 40; i--) if (isLabel(rows[i]?.[c])) return rows[i]![c]!;
+  return "";
 }
 
 /** Build the styled, formula-driven workbook. Pure — no browser APIs — so it's directly testable. */
@@ -55,7 +80,15 @@ export async function buildStyledWorkbook(sheets: Sheet[]) {
   const safeSheets = sheets.length > 0 ? sheets : [{ name: "Sheet1", rows: [["No data"]] }];
   const usedNames = new Set<string>();
 
-  for (const sheet of safeSheets) {
+  // Preview formula results so formatting reflects what each formula actually returns.
+  let computed: Sheet[] | null = null;
+  try {
+    computed = calculateWorkbook(safeSheets).sheets;
+  } catch {
+    computed = null;
+  }
+
+  for (const [s, sheet] of safeSheets.entries()) {
     const ws = wb.addWorksheet(sanitizeSheetName(sheet.name, usedNames), {
       views: [{ state: "frozen", ySplit: 1 }],
     });
@@ -68,12 +101,14 @@ export async function buildStyledWorkbook(sheets: Sheet[]) {
         const raw = stripIllegalXmlChars(row[c] ?? "");
         const cell = target.getCell(c + 1);
         cell.font = { name: "Arial", size: 10 };
-        const colHeader = String(sheet.rows[1]?.[c] ?? "");
+        const rowLabel = rowLabelFor(row, c);
+        const colHeader = colHeaderFor(sheet.rows, r, c);
 
         if (raw.startsWith("=") && raw.slice(1).trim()) {
           cell.value = { formula: raw.slice(1) };
           cell.font = { ...cell.font, color: { argb: formulaColor(raw) } };
-          cell.numFmt = pickFormat(row[0] ?? "", colHeader, raw, null);
+          const preview = toNumber(computed?.[s]?.rows[r]?.[c] ?? "");
+          cell.numFmt = pickFormat(rowLabel, colHeader, raw, preview);
           cell.alignment = { horizontal: "right" };
         } else if (isNumeric(raw)) {
           const n = toNumber(raw);
@@ -81,7 +116,7 @@ export async function buildStyledWorkbook(sheets: Sheet[]) {
           cell.font = { ...cell.font, color: { argb: INPUT_BLUE } };
           cell.numFmt = /^\d{4}$/.test(raw.trim())
             ? "@" // a bare 4-digit number (e.g. a year) reads better as text than as currency
-            : pickFormat(row[0] ?? "", colHeader, raw, n);
+            : pickFormat(rowLabel, colHeader, raw, n);
           cell.alignment = { horizontal: "right" };
         } else {
           cell.value = raw;
