@@ -294,32 +294,32 @@ export function ReportVisual({
           margin={{ left: 4, right: 12, top: 8, bottom: 4 }}
         >
           <CartesianGrid vertical={horizontal} horizontal={!horizontal} />
-          {horizontal ? (
-            <>
-              <XAxis type="number" tickLine={false} axisLine={false} fontSize={11} tickFormatter={compact(k0)} />
-              <YAxis
-                type="category"
-                dataKey="label"
-                tickLine={false}
-                axisLine={false}
-                fontSize={11}
-                width={110}
-                tickFormatter={(v: string) => (v.length > 16 ? `${v.slice(0, 15)}…` : v)}
-              />
-            </>
-          ) : (
-            <>
-              <XAxis
-                dataKey="label"
-                tickLine={false}
-                axisLine={false}
-                fontSize={11}
-                interval="preserveStartEnd"
-                tickFormatter={(v: string) => (v.length > 12 ? `${v.slice(0, 11)}…` : v)}
-              />
-              <YAxis tickLine={false} axisLine={false} fontSize={11} tickFormatter={compact(k0)} width={56} />
-            </>
-          )}
+          {horizontal
+            ? [
+                <XAxis key="x" type="number" tickLine={false} axisLine={false} fontSize={11} tickFormatter={compact(k0)} />,
+                <YAxis
+                  key="y"
+                  type="category"
+                  dataKey="label"
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={11}
+                  width={110}
+                  tickFormatter={(v: string) => (v.length > 16 ? `${v.slice(0, 15)}…` : v)}
+                />,
+              ]
+            : [
+                <XAxis
+                  key="x"
+                  dataKey="label"
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={11}
+                  interval="preserveStartEnd"
+                  tickFormatter={(v: string) => (v.length > 12 ? `${v.slice(0, 11)}…` : v)}
+                />,
+                <YAxis key="y" tickLine={false} axisLine={false} fontSize={11} tickFormatter={compact(k0)} width={56} />,
+              ]}
           {tooltip}
           {result.keys.length > 1 && <Legend iconSize={8} wrapperStyle={{ fontSize: 11 }} />}
           {result.keys.map((k, i) => (
@@ -348,7 +348,14 @@ export function ReportVisual({
       : visual.size === "l"
         ? "col-span-12"
         : "col-span-12 lg:col-span-6";
-  const height = visual.type === "card" ? "h-32" : visual.size === "l" ? "h-96" : "h-80";
+  const height =
+    visual.type === "card"
+      ? "h-32"
+      : visual.type === "table"
+        ? "max-h-[26rem] min-h-40"
+        : visual.size === "l"
+          ? "h-96"
+          : "h-80";
 
   return (
     <section
