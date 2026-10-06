@@ -464,7 +464,10 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
 
   const addEmpty = (type: VisualType) => {
     const t = defaultTable();
-    if (!t) return toast.info("Add a data table to the workbook first.");
+    if (!t) {
+      toast.info("Add a data table to the workbook first.");
+      return;
+    }
     const m = t.fields.find((f) => f.kind === "number");
     const c = t.fields.find((f) => f.kind !== "number");
     addVisual(
@@ -480,7 +483,10 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
   const runQuestion = async () => {
     const q = question.trim();
     if (!q || asking) return;
-    if (model.tables.length === 0) return toast.info("There is no data table in this workbook yet.");
+    if (model.tables.length === 0) {
+      toast.info("There is no data table in this workbook yet.");
+      return;
+    }
     const local = parseQuestion(q, model, defaultTable()?.name);
     if (local) {
       addVisual({ ...local, title: "" });
@@ -536,7 +542,10 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
   };
 
   const exportData = () => {
-    if (!page?.visuals.length) return toast.info("This page has no visuals to export.");
+    if (!page?.visuals.length) {
+      toast.info("This page has no visuals to export.");
+      return;
+    }
     const used = new Set<string>();
     const out: Sheet[] = page.visuals.map((v, i) => {
       const result = runVisual(v, model, filters);

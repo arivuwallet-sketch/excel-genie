@@ -213,7 +213,7 @@ export function ReportVisual({
             {rows.slice(0, 12).map((r, i) => (
               <Cell
                 key={r.label}
-                fill={PALETTE[i % PALETTE.length]}
+                fill={PALETTE[i % PALETTE.length]!}
                 fillOpacity={dim(r.label) ? 0.25 : 1}
               />
             ))}
@@ -228,8 +228,8 @@ export function ReportVisual({
       <ChartContainer config={config} className="aspect-auto h-full w-full">
         <ScatterChart margin={{ left: 4, right: 12, top: 8, bottom: 4 }}>
           <CartesianGrid strokeDasharray="3 3" />
-          <XAxis type="number" dataKey={k0} name={names[k0]} tickFormatter={compact(k0)} fontSize={11} />
-          <YAxis type="number" dataKey={k1} name={names[k1]} tickFormatter={compact(k1)} fontSize={11} width={56} />
+          <XAxis type="number" dataKey={k0} name={names[k0] ?? ""} tickFormatter={compact(k0)} fontSize={11} />
+          <YAxis type="number" dataKey={k1} name={names[k1] ?? ""} tickFormatter={compact(k1)} fontSize={11} width={56} />
           <ZAxis range={[60, 60]} />
           {tooltip}
           <Scatter
@@ -264,8 +264,8 @@ export function ReportVisual({
               <Line
                 key={k}
                 dataKey={k}
-                name={names[k]}
-                stroke={PALETTE[i % PALETTE.length]}
+                name={names[k] ?? k}
+                stroke={PALETTE[i % PALETTE.length]!}
                 strokeWidth={2}
                 dot={rows.length <= 24}
               />
@@ -273,9 +273,9 @@ export function ReportVisual({
               <Area
                 key={k}
                 dataKey={k}
-                name={names[k]}
-                stroke={PALETTE[i % PALETTE.length]}
-                fill={PALETTE[i % PALETTE.length]}
+                name={names[k] ?? k}
+                stroke={PALETTE[i % PALETTE.length]!}
+                fill={PALETTE[i % PALETTE.length]!}
                 fillOpacity={0.18}
                 strokeWidth={2}
               />
@@ -326,8 +326,8 @@ export function ReportVisual({
             <Bar
               key={k}
               dataKey={k}
-              name={names[k]}
-              fill={PALETTE[i % PALETTE.length]}
+              name={names[k] ?? k}
+              fill={PALETTE[i % PALETTE.length]!}
               radius={horizontal ? [0, 3, 3, 0] : [3, 3, 0, 0]}
               className="cursor-pointer"
               onClick={(d: { label?: string }, _i: number, e: React.MouseEvent) => click(d.label, e)}
