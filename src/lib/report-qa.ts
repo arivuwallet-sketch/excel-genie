@@ -95,12 +95,13 @@ export function parseQuestion(question: string, model: DataModel, preferTable?: 
   if (/\bdonut|doughnut\b/.test(q)) type = "donut";
   else if (/\bpie\b|\bshare\b|\bsplit\b|\bmix\b|\bbreakdown of\b/.test(q)) type = "pie";
   else if (/\barea\b/.test(q)) type = "area";
-  else if (/\bline\b/.test(q) || time) type = "line";
+  else if (/\bline\b/.test(q)) type = "line";
   else if (/\btable\b|\blist\b|\bmatrix\b|\bdetail/.test(q)) type = "table";
   else if (/\bscatter\b|\bvs\b|\bversus\b|\bcorrelat/.test(q)) type = "scatter";
   else if (/\bbar\b|\bhorizontal\b/.test(q)) type = "bar";
   else if (/\bcolumn\b/.test(q)) type = "column";
   else if (/\bcard\b|\bkpi\b/.test(q)) type = "card";
+  else if (time) type = "line";
 
   const topMatch = q.match(/\b(top|bottom)\s+(\d{1,3})\b/);
   const topN = topMatch ? Number(topMatch[2]) : null;

@@ -267,7 +267,12 @@ function buildTable(sheet: Sheet, usedNames: Set<string>): ModelTable | null {
   let shape: TableShape = "list";
   const label = fields.find((f) => f.kind === "category");
   const firstNum = fields.find((f) => f.kind === "number");
-  if (label && firstNum && label.distinct === parsed.length && parsed.length <= 40) {
+  if (
+    label &&
+    firstNum &&
+    new Set(parsed.map((r) => String(r[label.col] ?? ""))).size === parsed.length &&
+    parsed.length <= 40
+  ) {
     const formats = new Set(
       parsed.map((r) => {
         const v = r[firstNum.col];
