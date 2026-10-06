@@ -108,6 +108,7 @@ function Index() {
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [mode, setMode] = useState<"ask" | "edit">("edit");
   const [quality, setQuality] = useState<"auto" | "fast" | "reasoning">("auto");
+  const [webSearch, setWebSearch] = useState(false);
   const [provider, setProvider] = useState<AssistantProvider>("local");
   const [localAi, setLocalAi] = useState<LocalAiConfig | null>(null);
   const localRequest = useRef<AbortController | null>(null);
@@ -429,7 +430,7 @@ function Index() {
           AbortSignal.any([controller.signal, AbortSignal.timeout(300000)]),
         );
       } else {
-        const response = await runAgent({ data: { ...data, provider, quality } });
+        const response = await runAgent({ data: { ...data, provider, quality, webSearch } });
         if (!response.ok)
           throw new Error(
             `${response.error.message} [${response.error.code}; ${response.requestId.slice(0, 8)}]`,

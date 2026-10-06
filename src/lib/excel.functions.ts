@@ -102,7 +102,7 @@ export const runExcelAgent = createServerFn({ method: "POST" })
               retryable: false,
             },
           };
-        research = await researchWeb(lovableKey, data.prompt, AbortSignal.timeout(180000));
+        research = await researchWeb(lovableKey, data.prompt, new AbortController().signal);
       }
       const base = research
         ? `${agentInput(data)}\n\nLIVE WEB RESEARCH (retrieved today; use these figures where relevant, put each in a labelled input cell and mention the source in a note column):\n${research.summary}\nSources:\n${research.sources.map((s) => `- ${s.title}: ${s.url}`).join("\n")}`
