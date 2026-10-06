@@ -7,7 +7,8 @@ export type TemplateTier =
   | "Quantitative"
   | "Dashboards"
   | "Institutional"
-  | "Operations";
+  | "Operations"
+  | "Industry";
 
 export type FinancialTemplate = {
   id: string;
