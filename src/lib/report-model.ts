@@ -55,7 +55,7 @@ export type Visual = {
   topN: number | null;
   size: "s" | "m" | "l";
   /** Visual-level filter (e.g. a card showing only the "Revenue" line). */
-  filter?: { field: string; values: string[] } | null;
+  pins?: { field: string; values: string[] }[] | null;
   /** Number format override when one field mixes units (KPI lists, statements). */
   format?: FieldFormat | null;
 };
@@ -368,12 +368,11 @@ export function runVisual(visual: Visual, model: DataModel, filters: Filters): Q
   if (values.length === 0 && visual.type !== "table") return null;
   const cat = visual.category ? model.fields.get(visual.category) : undefined;
   let rows = filterRows(table, model, filters, cat?.id);
-  if (visual.filter && visual.filter.values.length) {
-    const ff = model.fields.get(visual.filter.field);
-    if (ff && ff.table === table.name) {
-      const set = new Set(visual.filter.values);
-      rows = rows.filter((r) => set.has(cellText(r[ff.col] ?? null)));
-    }
+  for (const pin of visual.pins ?? []) {
+    const ff = model.fields.get(pin.field);
+    if (!ff || ff.table !== table.name || pin.values.length === 0) continue;
+    const set = new Set(pin.values);
+    rows = rows.filter((r) => set.has(cellText(r[ff.col] ?? null)));
   }
   const keys = values.map((x, i) => valueKey(x.v, i));
   const total: Record<string, number | null> = {};
@@ -558,7 +557,8 @@ export function sanitizePages(pages: ReportPage[], model: DataModel): ReportPage
       (v) =>
         model.tables.some((t) => t.name === v.table) &&
         v.values.every((x) => model.fields.has(x.field)) &&
-        (!v.category || model.fields.has(v.category)),
+        (!v.category || model.fields.has(v.category)) &&
+        (v.pins ?? []).every((p) => model.fields.has(p.field)),
     ),
   }));
 }
@@ -585,15 +585,13 @@ function summaryPage(table: ModelTable, name?: string): ReportPage {
   const visuals: Visual[] = table.rows.slice(0, 8).map((r) => {
     const l = String(r[label.col] ?? "");
     const v = r[first.col];
-    const second = nums[1];
     return makeVisual({
       table: table.name,
       type: "card",
       title: l,
       values: [{ field: first.id, agg: "sum" }],
-      filter: { field: label.id, values: [l] },
+      pins: [{ field: label.id, values: [l] }],
       format: inferFormat(l, typeof v === "number" ? [v] : []),
-      ...(second ? {} : {}),
     });
   });
   visuals.push(
@@ -640,15 +638,13 @@ function matrixPage(table: ModelTable, name?: string): ReportPage {
       type: "card",
       title: `${l} · ${last}`,
       values: [{ field: value.id, agg: "sum" }],
-      filter: { field: line.id, values: [l] },
+      pins: [
+        { field: line.id, values: [l] },
+        { field: period.id, values: [last] },
+      ],
       format: fmt(l),
-      category: null,
     }),
   );
-  // Card filter must also pin the latest period: encode as a second visual-level filter via title
-  // and a period slicer default is avoided; runVisual applies one filter, so cards use line only
-  // when there is a single period, else a trend card would sum periods — use avg-free approach:
-  for (const v of visuals) if (periods.length > 1) v.filter = { field: line.id, values: [v.filter!.values[0]!] };
   keys.slice(0, 2).forEach((l, i) =>
     visuals.push(
       makeVisual({
@@ -657,7 +653,7 @@ function matrixPage(table: ModelTable, name?: string): ReportPage {
         title: `${l} by ${period.name}`,
         category: period.id,
         values: [{ field: value.id, agg: "sum" }],
-        filter: { field: line.id, values: [l] },
+        pins: [{ field: line.id, values: [l] }],
         format: fmt(l),
         sort: "label",
       }),
@@ -670,7 +666,7 @@ function matrixPage(table: ModelTable, name?: string): ReportPage {
       title: `${table.name} — ${last}`,
       category: line.id,
       values: [{ field: value.id, agg: "sum" }],
-      filter: { field: period.id, values: [last] },
+      pins: [{ field: period.id, values: [last] }],
       sort: "label",
     }),
   );
