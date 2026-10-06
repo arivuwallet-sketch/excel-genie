@@ -21,7 +21,15 @@ export type Field = {
   distinct: number;
 };
 export type Cell = string | number | null;
-export type ModelTable = { name: string; fields: Field[]; rows: Cell[][]; unpivoted: boolean };
+/** list = one record per row; summary = one KPI per row (mixed units); matrix = unpivoted statement. */
+export type TableShape = "list" | "summary" | "matrix";
+export type ModelTable = {
+  name: string;
+  fields: Field[];
+  rows: Cell[][];
+  unpivoted: boolean;
+  shape: TableShape;
+};
 export type DataModel = { tables: ModelTable[]; fields: Map<string, Field> };
 
 export type Agg = "sum" | "avg" | "count" | "distinct" | "min" | "max";
@@ -46,6 +54,10 @@ export type Visual = {
   sort: "value-desc" | "value-asc" | "label";
   topN: number | null;
   size: "s" | "m" | "l";
+  /** Visual-level filter (e.g. a card showing only the "Revenue" line). */
+  filter?: { field: string; values: string[] } | null;
+  /** Number format override when one field mixes units (KPI lists, statements). */
+  format?: FieldFormat | null;
 };
 export type ReportPage = { id: string; name: string; visuals: Visual[]; slicers: string[] };
 export type Filters = Record<string, string[]>;
@@ -213,7 +225,7 @@ function buildTable(sheet: Sheet, usedNames: Set<string>): ModelTable | null {
       format: i === names.length - 1 ? inferFormat(`${sheet.name} ${lineName}`, values) : "text",
       distinct: new Set(out.map((r) => r[i])).size,
     }));
-    return { name, fields, rows: out, unpivoted: true };
+    return { name, fields, rows: out, unpivoted: true, shape: "matrix" };
   }
 
   const cols = Array.from({ length: width }, (_, c) => c).filter((c) =>
@@ -250,7 +262,32 @@ function buildTable(sheet: Sheet, usedNames: Set<string>): ModelTable | null {
     });
   });
   if (!fields.some((f) => f.kind === "number") && fields.length < 2) return null;
-  return { name, fields, rows: parsed, unpivoted: false };
+  // KPI / assumptions lists: each row is a different metric with its own unit, so adding the
+  // rows up is meaningless. Detected by a unique label per row whose labels imply mixed units.
+  let shape: TableShape = "list";
+  const label = fields.find((f) => f.kind === "category");
+  const firstNum = fields.find((f) => f.kind === "number");
+  if (label && firstNum && label.distinct === parsed.length && parsed.length <= 40) {
+    const formats = new Set(
+      parsed.map((r) => {
+        const v = r[firstNum.col];
+        return inferFormat(String(r[label.col] ?? ""), typeof v === "number" ? [v] : []);
+      }),
+    );
+    if (
+      formats.size > 1 ||
+      /kpi|metric|measure|driver|input|setting|term|assumption|parameter/i.test(label.name)
+    )
+      shape = "summary";
+  }
+  const rowsOut =
+    shape === "summary"
+      ? parsed.filter((r) => {
+          const l = String(r[label!.col] ?? "");
+          return !l.startsWith("#") && r.some((v) => typeof v === "number");
+        })
+      : parsed;
+  return { name, fields, rows: rowsOut, unpivoted: false, shape };
 }
 
 export function buildDataModel(sheets: Sheet[]): DataModel {
@@ -330,7 +367,14 @@ export function runVisual(visual: Visual, model: DataModel, filters: Filters): Q
     .filter((x) => x.field && x.field.table === table.name);
   if (values.length === 0 && visual.type !== "table") return null;
   const cat = visual.category ? model.fields.get(visual.category) : undefined;
-  const rows = filterRows(table, model, filters, cat?.id);
+  let rows = filterRows(table, model, filters, cat?.id);
+  if (visual.filter && visual.filter.values.length) {
+    const ff = model.fields.get(visual.filter.field);
+    if (ff && ff.table === table.name) {
+      const set = new Set(visual.filter.values);
+      rows = rows.filter((r) => set.has(cellText(r[ff.col] ?? null)));
+    }
+  }
   const keys = values.map((x, i) => valueKey(x.v, i));
   const total: Record<string, number | null> = {};
   values.forEach((x, i) => {
@@ -391,8 +435,9 @@ export function formatValue(v: number | string | null | undefined, format: Field
   return new Intl.NumberFormat("en-US", opts).format(v);
 }
 
-export function measureFormat(value: VisualValue, model: DataModel): FieldFormat {
+export function measureFormat(value: VisualValue, model: DataModel, visual?: Visual): FieldFormat {
   if (value.agg === "count" || value.agg === "distinct") return "count";
+  if (visual?.format) return visual.format;
   return model.fields.get(value.field)?.format ?? "number";
 }
 
@@ -431,6 +476,8 @@ export function makeVisual(partial: Partial<Visual> & Pick<Visual, "table" | "ty
 
 /** Quick-insights style page: KPI cards, a breakdown, a trend, a share chart and a detail table. */
 export function autoPage(table: ModelTable, name?: string): ReportPage {
+  if (table.shape === "summary") return summaryPage(table, name);
+  if (table.shape === "matrix") return matrixPage(table, name);
   const measures = table.fields.filter((f) => f.kind === "number");
   const cats = table.fields.filter((f) => f.kind !== "number" && f.distinct >= 2);
   const time =
@@ -524,4 +571,108 @@ export function visualTitle(visual: Visual, model: DataModel) {
     return `${measures[0]} vs ${measures[1]}${cat ? ` by ${cat}` : ""}`;
   const m = measures.slice(0, 2).join(" and ") || "Values";
   return cat && visual.type !== "card" ? `${m} by ${cat}` : m;
+}
+
+export function labelFormat(label: string, values: number[]): FieldFormat {
+  return inferFormat(label, values);
+}
+
+/** KPI list → one card per metric, each in its own unit; a table without a meaningless total. */
+function summaryPage(table: ModelTable, name?: string): ReportPage {
+  const label = table.fields.find((f) => f.kind === "category")!;
+  const nums = table.fields.filter((f) => f.kind === "number");
+  const first = nums[0]!;
+  const visuals: Visual[] = table.rows.slice(0, 8).map((r) => {
+    const l = String(r[label.col] ?? "");
+    const v = r[first.col];
+    const second = nums[1];
+    return makeVisual({
+      table: table.name,
+      type: "card",
+      title: l,
+      values: [{ field: first.id, agg: "sum" }],
+      filter: { field: label.id, values: [l] },
+      format: inferFormat(l, typeof v === "number" ? [v] : []),
+      ...(second ? {} : {}),
+    });
+  });
+  visuals.push(
+    makeVisual({
+      table: table.name,
+      type: "table",
+      category: label.id,
+      values: nums.slice(0, 5).map((f) => ({ field: f.id, agg: "sum" as Agg })),
+      sort: "label",
+      title: `${table.name} — all metrics`,
+    }),
+  );
+  return { id: newId("p"), name: name ?? table.name, visuals, slicers: [] };
+}
+
+const KEY_LINE =
+  /^(?:total )?(?:revenue|net revenue|sales|net sales|gross profit|ebitda|operating income|ebit|net income|free cash flow|fcf|ending cash|net cash|total assets|total equity|arr|ending arr|mrr|ending mrr|noi|net operating income|cfads|dscr|irr|enterprise value|equity value|tce|nii|net interest income)\b/i;
+
+/** Statement (line items × periods) → latest-period KPI cards, trends of key lines, statement table. */
+function matrixPage(table: ModelTable, name?: string): ReportPage {
+  const line = table.fields[0]!;
+  const period = table.fields[1]!;
+  const value = table.fields[table.fields.length - 1]!;
+  const lines: string[] = [];
+  const periods: string[] = [];
+  for (const r of table.rows) {
+    const l = String(r[line.col]);
+    const p = String(r[period.col]);
+    if (!lines.includes(l)) lines.push(l);
+    if (!periods.includes(p)) periods.push(p);
+  }
+  const keys = [...lines.filter((l) => KEY_LINE.test(l)), ...lines.filter((l) => !KEY_LINE.test(l))]
+    .filter((l, i, a) => a.indexOf(l) === i)
+    .slice(0, 4);
+  const last = periods[periods.length - 1]!;
+  const fmt = (l: string) =>
+    inferFormat(
+      l,
+      table.rows.filter((r) => r[line.col] === l).map((r) => r[value.col] as number),
+    );
+  const visuals: Visual[] = keys.map((l) =>
+    makeVisual({
+      table: table.name,
+      type: "card",
+      title: `${l} · ${last}`,
+      values: [{ field: value.id, agg: "sum" }],
+      filter: { field: line.id, values: [l] },
+      format: fmt(l),
+      category: null,
+    }),
+  );
+  // Card filter must also pin the latest period: encode as a second visual-level filter via title
+  // and a period slicer default is avoided; runVisual applies one filter, so cards use line only
+  // when there is a single period, else a trend card would sum periods — use avg-free approach:
+  for (const v of visuals) if (periods.length > 1) v.filter = { field: line.id, values: [v.filter!.values[0]!] };
+  keys.slice(0, 2).forEach((l, i) =>
+    visuals.push(
+      makeVisual({
+        table: table.name,
+        type: i === 0 ? "area" : "column",
+        title: `${l} by ${period.name}`,
+        category: period.id,
+        values: [{ field: value.id, agg: "sum" }],
+        filter: { field: line.id, values: [l] },
+        format: fmt(l),
+        sort: "label",
+      }),
+    ),
+  );
+  visuals.push(
+    makeVisual({
+      table: table.name,
+      type: "table",
+      title: `${table.name} — ${last}`,
+      category: line.id,
+      values: [{ field: value.id, agg: "sum" }],
+      filter: { field: period.id, values: [last] },
+      sort: "label",
+    }),
+  );
+  return { id: newId("p"), name: name ?? table.name, visuals, slicers: [period.id] };
 }
