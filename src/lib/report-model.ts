@@ -144,7 +144,7 @@ function inferFormat(name: string, values: number[]): FieldFormat {
 function parseCell(raw: string): Cell {
   const v = raw.trim();
   if (!v) return null;
-  const n = numericValue(v);
+  const n = numericValue(v) ?? (/^[+-]?\d*\.?\d+e[+-]?\d+$/i.test(v) ? Number(v) : null);
   return n === null ? v : n;
 }
 
@@ -199,7 +199,9 @@ function buildTable(sheet: Sheet, usedNames: Set<string>): ModelTable | null {
       }
     }
     if (out.length === 0) return null;
-    const lineName = header[lineCol] || "Line item";
+    const rawLine = header[lineCol] ?? "";
+    const lineName =
+      !rawLine || rawLine.length > 24 || rawLine === rawLine.toUpperCase() ? "Line item" : rawLine;
     const names = [lineName, "Period", ...extra.map((c) => header[c] || `Column ${c + 1}`), "Value"];
     const values = out.map((r) => r[r.length - 1] as number);
     const fields: Field[] = names.map((n, i) => ({
@@ -224,7 +226,10 @@ function buildTable(sheet: Sheet, usedNames: Set<string>): ModelTable | null {
     let fname = header[c] || `Column ${c + 1}`;
     for (let k = 2; seen.has(fname.toLowerCase()); k++) fname = `${header[c] || "Column"} ${k}`;
     seen.add(fname.toLowerCase());
-    const cells = parsed.map((r) => r[i]).filter((v) => v !== null);
+    // Calculation errors (#DIV/0!, #N/A…) don't decide a column's type.
+    const cells = parsed
+      .map((r) => r[i])
+      .filter((v) => v !== null && !(typeof v === "string" && v.startsWith("#")));
     const nums = cells.filter((v): v is number => typeof v === "number");
     const isDate =
       cells.length > 0 &&
