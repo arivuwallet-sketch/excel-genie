@@ -130,8 +130,11 @@ function findHeader(rows: string[][]): number {
         if (++blanks >= 2) break;
         continue;
       }
+      const hasNumber = next.some((v) => numericValue(v) !== null);
+      // A blank row followed by a text-only row (section title / new header) starts a new block.
+      if (blanks > 0 && !hasNumber) break;
       blanks = 0;
-      if (next.some((v) => numericValue(v) !== null)) height++;
+      if (hasNumber) height++;
     }
     if (height < 2) continue;
     const score = filled.length * Math.min(height, 60);
@@ -174,6 +177,7 @@ function buildTable(sheet: Sheet, usedNames: Set<string>): ModelTable | null {
       if (++blanks >= 2) break;
       continue;
     }
+    if (blanks > 0 && !row.some((v) => numericValue(v) !== null)) break;
     blanks = 0;
     const firstText = row.find((v) => v && numericValue(v) === null) ?? "";
     if (TOTAL_RE.test(firstText)) continue;
