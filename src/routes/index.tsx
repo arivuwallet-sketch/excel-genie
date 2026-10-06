@@ -947,6 +947,8 @@ function Index() {
                   onMode={setMode}
                   quality={quality}
                   onQuality={setQuality}
+                  webSearch={webSearch}
+                  onWebSearch={setWebSearch}
                   onCancel={stopRequest}
                   formulas={formulas}
                   vba={vba}

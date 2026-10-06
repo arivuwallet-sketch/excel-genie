@@ -1,4 +1,4 @@
-import { Loader2, Send, ShieldCheck, Sparkles, Terminal } from "lucide-react";
+import { Globe, Loader2, Send, ShieldCheck, Sparkles, Terminal } from "lucide-react";
 import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
