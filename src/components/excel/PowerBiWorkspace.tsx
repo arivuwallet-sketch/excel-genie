@@ -321,6 +321,28 @@ function FormatPane({
             </label>
           </div>
         )}
+        {(visual.pins ?? []).length > 0 && (
+          <div>
+            <span className="font-medium">Filters on this visual</span>
+            <div className="mt-1 space-y-1">
+              {(visual.pins ?? []).map((p, i) => (
+                <div key={`${p.field}-${i}`} className="flex items-center gap-1 rounded bg-accent px-2 py-1">
+                  <span className="min-w-0 flex-1 truncate">
+                    {model.fields.get(p.field)?.name}: {p.values.join(", ")}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Remove visual filter"
+                    onClick={() => set({ pins: (visual.pins ?? []).filter((_, j) => j !== i) })}
+                    className="rounded p-0.5 hover:bg-background"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <label className="block">
           <span className="font-medium">Size</span>
           <select
@@ -836,7 +858,7 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
             {selected && (
               <span className="ml-auto hidden text-[11px] text-muted-foreground sm:block">
                 Selected: {visualTitle(selected, model)} ·{" "}
-                {formatValue(runVisual(selected, model, filters)?.total["v0"] ?? null, selected.values[0] ? measureFormat(selected.values[0], model) : "number", true)}
+                {formatValue(runVisual(selected, model, filters)?.total["v0"] ?? null, selected.values[0] ? measureFormat(selected.values[0], model, selected) : "number", true)}
               </span>
             )}
           </nav>

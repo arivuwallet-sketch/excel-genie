@@ -23,6 +23,7 @@ import {
 import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
 import {
   formatValue,
+  labelFormat,
   measureFormat,
   measureLabel,
   runVisual,
@@ -106,7 +107,7 @@ export function ReportVisual({
   const config: ChartConfig = {};
   visual.values.forEach((v, i) => {
     const k = `v${i}`;
-    formats[k] = measureFormat(v, model);
+    formats[k] = measureFormat(v, model, visual);
     names[k] = measureLabel(v, model);
     config[k] = { label: names[k], color: PALETTE[i % PALETTE.length]! };
   });
@@ -116,6 +117,12 @@ export function ReportVisual({
     onToggleFilter(category.id, label, !!(e?.ctrlKey || e?.metaKey || e?.shiftKey));
   };
   const k0 = result?.keys[0] ?? "v0";
+  const shape = model.tables.find((t) => t.name === visual.table)?.shape ?? "list";
+  // KPI lists and statements mix units per row: format each row from its own label.
+  const cellFormat = (label: string, k: string, v: unknown): import("@/lib/report-model").FieldFormat =>
+    shape !== "list" && k === k0 && !visual.format && typeof v === "number"
+      ? labelFormat(label, [v])
+      : (formats[k] ?? "number");
   const compact = (k: string) => (v: number) => formatValue(v, formats[k] ?? "number", true);
   const rows = result?.rows ?? [];
   const tooltip = <Tooltip content={<TooltipBox formats={formats} names={names} />} />;
@@ -172,13 +179,13 @@ export function ReportVisual({
                 <td className="px-3 py-1">{r.label}</td>
                 {result.keys.map((k) => (
                   <td key={k} className="px-3 py-1 text-right tabular-nums">
-                    {formatValue(r[k] as number | null, formats[k] ?? "number")}
+                    {formatValue(r[k] as number | null, cellFormat(r.label, k, r[k]))}
                   </td>
                 ))}
               </tr>
             ))}
           </tbody>
-          {category && (
+          {category && shape === "list" && (
             <tfoot className="sticky bottom-0 bg-muted font-semibold">
               <tr>
                 <td className="px-3 py-1.5">Total</td>
