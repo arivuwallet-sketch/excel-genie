@@ -301,7 +301,7 @@ export function projectionModel(spec: ProjSpec): FinancialTemplate {
     add(uL, (c, i) =>
       i === 0
         ? `=${ar(`${uL} (year 1)`)}`
-        : `=${prev(c)}${rows.length + 1}*(1+${ar(`${uL} growth %`)})`,
+        : `=ROUND(${prev(c)}${rows.length + 1}*(1+${ar(`${uL} growth %`)}),0)`,
     );
     add(pL, (c, i) =>
       i === 0
@@ -367,7 +367,7 @@ export function projectionModel(spec: ProjSpec): FinancialTemplate {
       ["PV of terminal value", `=B5*Model!F${at["Discount factor"]}`],
       ["Enterprise value", "=B4+B6"],
       ["Terminal value % of EV", "=IFERROR(B6/B7,0)"],
-      ["EV / Year-1 EBITDA", `=IFERROR(B7/Model!B${at["EBITDA"]},0)`],
+      ["EV / FY2026 EBITDA (x)", `=IF(Model!B${at["EBITDA"]}>0,B7/Model!B${at["EBITDA"]},"n/m")`],
       [
         "5-year revenue CAGR",
         `=IFERROR((Model!F${at["Revenue"]}/Model!B${at["Revenue"]})^(1/4)-1,0)`,
