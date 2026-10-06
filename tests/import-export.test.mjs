@@ -111,3 +111,31 @@ test("CSV with quoted tabs retains comma-separated columns", () => {
     ["Bob", "c\td"],
   ]);
 });
+
+test("styled export formats rates as percents, amounts as money and years plainly", async () => {
+  const wb = await buildStyledWorkbook([
+    {
+      name: "Dash",
+      rows: [
+        ["KPIS", "", ""],
+        ["", "Metric", "Value"],
+        ["", "Total Revenue", "=SUM(Data!B2:B3)"],
+        ["", "Revenue Growth", "=(Data!B3-Data!B2)/Data!B2"],
+        ["", "Gross Margin", "=1-Data!C3/Data!B3"],
+        ["", "Freight rate ($/mt)", "28.5"],
+        ["", "Distribution", "European"],
+        ["", "LP share of equity", "0.9"],
+      ],
+    },
+    { name: "Data", rows: [["Year", "Revenue", "COGS"], ["2025", "9600", "6000"], ["2026", "12000", "7000"]] },
+  ]);
+  const d = wb.getWorksheet("Dash");
+  assert.match(d.getCell("C3").numFmt, /^\$/);
+  assert.match(d.getCell("C4").numFmt, /%/);
+  assert.match(d.getCell("C5").numFmt, /%/);
+  assert.match(d.getCell("C6").numFmt, /^\$/);
+  assert.match(d.getCell("C8").numFmt, /%/);
+  const data = wb.getWorksheet("Data");
+  assert.equal(data.getCell("A2").numFmt, "0");
+  assert.match(data.getCell("B2").numFmt, /^\$/);
+});
