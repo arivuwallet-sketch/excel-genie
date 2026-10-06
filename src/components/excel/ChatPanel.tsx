@@ -1,4 +1,4 @@
-import { Loader2, Send, ShieldCheck, Sparkles, Terminal } from "lucide-react";
+import { Globe, Loader2, Send, ShieldCheck, Sparkles, Terminal } from "lucide-react";
 import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -41,6 +41,8 @@ type Props = {
   onMode: (value: "ask" | "edit") => void;
   quality: "auto" | "fast" | "reasoning";
   onQuality: (value: "auto" | "fast" | "reasoning") => void;
+  webSearch: boolean;
+  onWebSearch: (value: boolean) => void;
   onCancel: () => void;
   formulas: string[];
   vba: string;
@@ -64,6 +66,8 @@ export function ChatPanel({
   onMode,
   quality,
   onQuality,
+  webSearch,
+  onWebSearch,
   onCancel,
   formulas,
   vba,
@@ -128,6 +132,20 @@ export function ChatPanel({
             </select>
           )}
         </div>
+        {(provider === "lovable" || provider === "openai") && (
+          <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              aria-label="Search the web"
+              checked={webSearch}
+              disabled={busy}
+              onChange={(e) => onWebSearch(e.target.checked)}
+              className="accent-[var(--sidebar-primary)]"
+            />
+            <Globe className="size-3.5 text-sidebar-primary" /> Search the web for live data (rates,
+            prices, benchmarks)
+          </label>
+        )}
         <p className="mt-2 text-[11px] text-sidebar-foreground/60">
           {provider === "local"
             ? "Runs in your browser without API keys, provider credits or daily quotas. Uses explicit commands and full-data calculations. Edits require review."

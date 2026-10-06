@@ -42,7 +42,7 @@ import {
   type Workspace,
 } from "@/lib/workspace-storage";
 import { ChatPanel, type ChatMessage } from "@/components/excel/ChatPanel";
-import { DashboardHub } from "@/components/excel/DashboardHub";
+import { PowerBiWorkspace } from "@/components/excel/PowerBiWorkspace";
 import { ModelControls } from "@/components/excel/ModelControls";
 import {
   findAssumptions,
@@ -108,6 +108,7 @@ function Index() {
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [mode, setMode] = useState<"ask" | "edit">("edit");
   const [quality, setQuality] = useState<"auto" | "fast" | "reasoning">("auto");
+  const [webSearch, setWebSearch] = useState(false);
   const [provider, setProvider] = useState<AssistantProvider>("local");
   const [localAi, setLocalAi] = useState<LocalAiConfig | null>(null);
   const localRequest = useRef<AbortController | null>(null);
@@ -429,7 +430,7 @@ function Index() {
           AbortSignal.any([controller.signal, AbortSignal.timeout(300000)]),
         );
       } else {
-        const response = await runAgent({ data: { ...data, provider, quality } });
+        const response = await runAgent({ data: { ...data, provider, quality, webSearch } });
         if (!response.ok)
           throw new Error(
             `${response.error.message} [${response.error.code}; ${response.requestId.slice(0, 8)}]`,
@@ -655,7 +656,7 @@ function Index() {
           <Calculator className="size-4" /> Calculate
         </Button>
         <Button size="sm" variant="outline" onClick={() => setDashboardOpen(true)}>
-          <BarChart3 className="size-4" /> Dashboard
+          <BarChart3 className="size-4" /> Power BI
         </Button>
 
         <DropdownMenu>
@@ -946,6 +947,8 @@ function Index() {
                   onMode={setMode}
                   quality={quality}
                   onQuality={setQuality}
+                  webSearch={webSearch}
+                  onWebSearch={setWebSearch}
                   onCancel={stopRequest}
                   formulas={formulas}
                   vba={vba}
@@ -1000,11 +1003,12 @@ function Index() {
         onPrompt={(text) => void send(text)}
       />
 
-      <DashboardHub
+      <PowerBiWorkspace
         open={dashboardOpen}
-        onOpenChange={setDashboardOpen}
+        onClose={() => setDashboardOpen(false)}
         sheets={sheets}
-        activeIndex={activeIndex}
+        aiAvailable={!!cloudStatus?.lovable}
+        onPublish={() => void pushPowerBiWorkbook()}
       />
 
       {dragging && (

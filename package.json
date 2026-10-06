@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "test": "node --test tests/workbook.test.mjs tests/powerbi-data.test.mjs tests/templates.test.mjs tests/agent.test.mjs tests/workflows.test.mjs tests/calculation.test.mjs tests/local-assistant.test.mjs tests/ai-providers.test.mjs",
+    "test": "node --test tests/workbook.test.mjs tests/powerbi-data.test.mjs tests/templates.test.mjs tests/agent.test.mjs tests/workflows.test.mjs tests/calculation.test.mjs tests/local-assistant.test.mjs tests/ai-providers.test.mjs tests/report-model.test.mjs",
     "test:integration": "node --test tests/import-export.test.mjs",
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test"
