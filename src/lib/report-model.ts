@@ -92,7 +92,7 @@ const DATE_RE = /^\d{4}-\d{1,2}-\d{1,2}(?:[T ].*)?$|^\d{1,2}\/\d{1,2}\/\d{2,4}$/
 const PERCENT_NAME =
   /%|\b(?:rate|margin|growth|yield|share|ratio|churn|pct|percent|irr|return|roi|roe|roa|cagr|wacc|retention|conversion|utili[sz]ation|occupancy|probability|weight|change|delta|var)\b|\bvs\.?\s/i;
 const MONEY_NAME =
-  /\$|£|€|\b(?:revenue|sales|cost|costs|price|amount|profit|income|expense|expenses|cash|balance|budget|spend|ebitda|ebit|salary|pay|fee|fees|arr|mrr|ltv|cac|capex|opex|debt|equity|asset|assets|liabilit\w*|value|valuation|gmv|payment|invoice|total|net|gross|margin \$|usd|eur|gbp|deal size|aov|arpu|arpa|acv|tcv|basket|ticket|wage|rent|loan|principal|interest|dividend|nav|ffo|affo|noi)\b/i;
+  /\$|£|€|\b(?:revenue|sales|cost|costs|price|amount|profit|income|expense|expenses|cash|balance|budget|spend|ebitda|ebit|salary|pay|fee|fees|arr|mrr|ltv|cac|capex|opex|debt|equity|asset|assets|liabilit\w*|value|valuation|gmv|payment|invoice|total|net|gross|margin \$|usd|eur|gbp|cogs|depreciation|amortization|d&a|tax|taxes|interest expense|deal size|aov|arpu|arpa|acv|tcv|basket|ticket|wage|rent|loan|principal|interest|dividend|nav|ffo|affo|noi)\b/i;
 
 function isPeriodHeader(v: string) {
   const t = v.trim();

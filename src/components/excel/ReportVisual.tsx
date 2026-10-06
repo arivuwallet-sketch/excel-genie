@@ -103,7 +103,7 @@ export function ReportVisual({
   const title = visualTitle(visual, model);
   const context = pinContext(visual, model, filters)
     .split(" · ")
-    .filter((c) => c && c !== title)
+    .filter((c) => c && !title.includes(c))
     .join(" · ");
   const category = visual.category ? model.fields.get(visual.category) : undefined;
   const picked = category ? (filters[category.id] ?? []) : [];
