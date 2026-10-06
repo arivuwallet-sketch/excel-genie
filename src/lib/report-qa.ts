@@ -15,7 +15,11 @@ import {
  * "average margin over time"). Matches field names from the model; returns null when the
  * question names no known field so the caller can hand it to the AI instead.
  */
-const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9%]+/g, " ").trim();
+const norm = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/[^a-z0-9%]+/g, " ")
+    .trim();
 
 function mentions(q: string, field: Field) {
   const n = norm(field.name);
@@ -27,7 +31,11 @@ function mentions(q: string, field: Field) {
   return ` ${q} `.indexOf(` ${alt} `);
 }
 
-export function parseQuestion(question: string, model: DataModel, preferTable?: string): Visual | null {
+export function parseQuestion(
+  question: string,
+  model: DataModel,
+  preferTable?: string,
+): Visual | null {
   const q = norm(question);
   if (!q) return null;
   type ValueHit = { f: Field; value: string };
@@ -70,7 +78,14 @@ export function parseQuestion(question: string, model: DataModel, preferTable?: 
     (h, i, all) => !all.some((o, j) => j < i && norm(o.f.name).includes(norm(h.f.name))),
   );
   const valueHits = best.values.filter(
-    (v, i, all) => !all.some((o, j) => j !== i && o.f === v.f && norm(o.value).includes(norm(v.value)) && o.value.length > v.value.length),
+    (v, i, all) =>
+      !all.some(
+        (o, j) =>
+          j !== i &&
+          o.f === v.f &&
+          norm(o.value).includes(norm(v.value)) &&
+          o.value.length > v.value.length,
+      ),
   );
   const pinMap = new Map<string, string[]>();
   for (const v of valueHits) pinMap.set(v.f.id, [...(pinMap.get(v.f.id) ?? []), v.value]);
@@ -87,10 +102,12 @@ export function parseQuestion(question: string, model: DataModel, preferTable?: 
   else if (/\b(how many|count|number of)\b/.test(q)) agg = measures.length ? "count" : "count";
   else if (/\b(distinct|unique)\b/.test(q)) agg = "distinct";
   else if (/\b(minimum|min|lowest|smallest)\b/.test(q) && !/\b(top|bottom)\b/.test(q)) agg = "min";
-  else if (/\b(maximum|max|highest|largest|biggest)\b/.test(q) && !/\b(top|bottom)\b/.test(q)) agg = "max";
+  else if (/\b(maximum|max|highest|largest|biggest)\b/.test(q) && !/\b(top|bottom)\b/.test(q))
+    agg = "max";
   else if (/\b(total|sum)\b/.test(q)) agg = "sum";
 
-  const time = /\b(over time|trend|by month|monthly|by year|yearly|by period|by quarter|timeline)\b/.test(q);
+  const time =
+    /\b(over time|trend|by month|monthly|by year|yearly|by period|by quarter|timeline)\b/.test(q);
   let type: VisualType | null = null;
   if (/\bdonut|doughnut\b/.test(q)) type = "donut";
   else if (/\bpie\b|\bshare\b|\bsplit\b|\bmix\b|\bbreakdown of\b/.test(q)) type = "pie";
@@ -122,8 +139,16 @@ export function parseQuestion(question: string, model: DataModel, preferTable?: 
     if (extra) valueFields.push(extra);
   }
   const values = valueFields.length
-    ? valueFields.map((f) => ({ field: f.id, agg: agg && agg !== "count" ? agg : agg === "count" ? "count" : defaultAgg(f) }))
-    : [{ field: (category ?? table.fields[0]!).id, agg: (agg === "distinct" ? "distinct" : "count") as Agg }];
+    ? valueFields.map((f) => ({
+        field: f.id,
+        agg: agg && agg !== "count" ? agg : agg === "count" ? "count" : defaultAgg(f),
+      }))
+    : [
+        {
+          field: (category ?? table.fields[0]!).id,
+          agg: (agg === "distinct" ? "distinct" : "count") as Agg,
+        },
+      ];
 
   const finalType: VisualType =
     type ??
@@ -148,7 +173,9 @@ export function parseQuestion(question: string, model: DataModel, preferTable?: 
               .filter((v): v is number => typeof v === "number"),
           )
         : null,
-    title: pinnedLine ? `${valueHits.map((v) => v.value).join(", ")}${category ? ` by ${category.name}` : ""}` : "",
+    title: pinnedLine
+      ? `${valueHits.map((v) => v.value).join(", ")}${category ? ` by ${category.name}` : ""}`
+      : "",
     type: category ? finalType : "card",
     category: category && finalType !== "card" ? category.id : null,
     values,

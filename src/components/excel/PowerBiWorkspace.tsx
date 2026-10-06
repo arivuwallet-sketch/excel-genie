@@ -111,7 +111,11 @@ function Slicer({
   const all = useMemo(() => distinctValues(field, model), [field, model]);
   const shown = all.filter((v) => v.toLowerCase().includes(query.toLowerCase())).slice(0, 300);
   const label =
-    selected.length === 0 ? "All" : selected.length === 1 ? selected[0] : `${selected.length} selected`;
+    selected.length === 0
+      ? "All"
+      : selected.length === 1
+        ? selected[0]
+        : `${selected.length} selected`;
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -119,7 +123,9 @@ function Slicer({
           type="button"
           className={cn(
             "flex h-8 max-w-[15rem] items-center gap-1.5 rounded-md border bg-card px-2.5 text-xs",
-            selected.length ? "border-primary text-foreground" : "border-border text-muted-foreground",
+            selected.length
+              ? "border-primary text-foreground"
+              : "border-border text-muted-foreground",
           )}
         >
           <span className="font-semibold text-foreground">{field.name}:</span>
@@ -135,13 +141,21 @@ function Slicer({
             placeholder={`Search ${field.name}`}
             className="h-7 text-xs"
           />
-          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => onChange([])}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2 text-xs"
+            onClick={() => onChange([])}
+          >
             Clear
           </Button>
         </div>
         <div className="mt-2 max-h-64 space-y-0.5 overflow-auto">
           {shown.map((v) => (
-            <label key={v} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-accent">
+            <label
+              key={v}
+              className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-accent"
+            >
               <input
                 type="checkbox"
                 checked={selected.includes(v)}
@@ -153,7 +167,9 @@ function Slicer({
               <span className="truncate">{v}</span>
             </label>
           ))}
-          {shown.length === 0 && <p className="px-1.5 py-2 text-xs text-muted-foreground">No values</p>}
+          {shown.length === 0 && (
+            <p className="px-1.5 py-2 text-xs text-muted-foreground">No values</p>
+          )}
         </div>
         <button
           type="button"
@@ -187,7 +203,12 @@ function FormatPane({
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Visualizations
         </h2>
-        <button type="button" aria-label="Close pane" onClick={onClose} className="rounded p-1 hover:bg-accent">
+        <button
+          type="button"
+          aria-label="Close pane"
+          onClick={onClose}
+          className="rounded p-1 hover:bg-accent"
+        >
           <X className="size-3.5" />
         </button>
       </div>
@@ -201,10 +222,17 @@ function FormatPane({
                 type="button"
                 title={label}
                 aria-label={label}
-                onClick={() => set({ type, size: type === "card" ? "s" : visual.size === "s" ? "m" : visual.size })}
+                onClick={() =>
+                  set({
+                    type,
+                    size: type === "card" ? "s" : visual.size === "s" ? "m" : visual.size,
+                  })
+                }
                 className={cn(
                   "flex h-9 items-center justify-center rounded border",
-                  visual.type === type ? "border-primary bg-accent text-primary" : "border-border hover:bg-accent",
+                  visual.type === type
+                    ? "border-primary bg-accent text-primary"
+                    : "border-border hover:bg-accent",
                 )}
               >
                 <Icon className="size-4" />
@@ -223,7 +251,9 @@ function FormatPane({
         </label>
         {visual.type !== "card" && (
           <label className="block">
-            <span className="font-medium">{visual.type === "scatter" ? "Details (points)" : "Axis / Category"}</span>
+            <span className="font-medium">
+              {visual.type === "scatter" ? "Details (points)" : "Axis / Category"}
+            </span>
             <select
               value={visual.category ?? ""}
               onChange={(e) => set({ category: e.target.value || null })}
@@ -244,7 +274,9 @@ function FormatPane({
             {visual.values.map((v, i) => (
               <div key={`${v.field}-${i}`} className="rounded border border-border p-1.5">
                 <div className="flex items-center gap-1">
-                  <span className="min-w-0 flex-1 truncate">{model.fields.get(v.field)?.name ?? "Missing"}</span>
+                  <span className="min-w-0 flex-1 truncate">
+                    {model.fields.get(v.field)?.name ?? "Missing"}
+                  </span>
                   <button
                     type="button"
                     aria-label="Remove value"
@@ -258,13 +290,20 @@ function FormatPane({
                   value={v.agg}
                   onChange={(e) =>
                     set({
-                      values: visual.values.map((x, j) => (j === i ? { ...x, agg: e.target.value as Agg } : x)),
+                      values: visual.values.map((x, j) =>
+                        j === i ? { ...x, agg: e.target.value as Agg } : x,
+                      ),
                     })
                   }
                   className="mt-1 w-full rounded border border-border bg-background p-1"
                 >
                   {(Object.keys(AGG_LABELS) as Agg[])
-                    .filter((a) => model.fields.get(v.field)?.kind === "number" || a === "count" || a === "distinct")
+                    .filter(
+                      (a) =>
+                        model.fields.get(v.field)?.kind === "number" ||
+                        a === "count" ||
+                        a === "distinct",
+                    )
                     .map((a) => (
                       <option key={a} value={a}>
                         {AGG_LABELS[a]}
@@ -327,7 +366,10 @@ function FormatPane({
             <span className="font-medium">Filters on this visual</span>
             <div className="mt-1 space-y-1">
               {(visual.pins ?? []).map((p, i) => (
-                <div key={`${p.field}-${i}`} className="flex items-center gap-1 rounded bg-accent px-2 py-1">
+                <div
+                  key={`${p.field}-${i}`}
+                  className="flex items-center gap-1 rounded bg-accent px-2 py-1"
+                >
                   <span className="min-w-0 flex-1 truncate">
                     {model.fields.get(p.field)?.name}: {p.values.join(", ")}
                   </span>
@@ -407,7 +449,9 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
     // Workbook changed while open: drop visuals whose fields disappeared.
     setPages((p) => {
       const clean = sanitizePages(p, model);
-      return clean.some((x) => x.visuals.length) ? clean : model.tables.slice(0, 8).map((t) => autoPage(t));
+      return clean.some((x) => x.visuals.length)
+        ? clean
+        : model.tables.slice(0, 8).map((t) => autoPage(t));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- rebuild only when the model changes
   }, [open, model]);
@@ -424,7 +468,8 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !document.querySelector("[data-radix-popper-content-wrapper]")) onClose();
+      if (e.key === "Escape" && !document.querySelector("[data-radix-popper-content-wrapper]"))
+        onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -455,7 +500,13 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
     setFilters((f) => {
       const cur = f[field] ?? [];
       const has = cur.includes(value);
-      const next = additive ? (has ? cur.filter((x) => x !== value) : [...cur, value]) : has && cur.length === 1 ? [] : [value];
+      const next = additive
+        ? has
+          ? cur.filter((x) => x !== value)
+          : [...cur, value]
+        : has && cur.length === 1
+          ? []
+          : [value];
       return { ...f, [field]: next };
     });
 
@@ -463,22 +514,43 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
     if (selected && selected.table === field.table) {
       if (field.kind === "number") {
         if (!selected.values.some((v) => v.field === field.id))
-          updateVisual({ ...selected, values: [...selected.values, { field: field.id, agg: defaultAgg(field) }] });
-      } else updateVisual({ ...selected, category: field.id, type: selected.type === "card" ? "column" : selected.type, size: selected.type === "card" ? "m" : selected.size });
+          updateVisual({
+            ...selected,
+            values: [...selected.values, { field: field.id, agg: defaultAgg(field) }],
+          });
+      } else
+        updateVisual({
+          ...selected,
+          category: field.id,
+          type: selected.type === "card" ? "column" : selected.type,
+          size: selected.type === "card" ? "m" : selected.size,
+        });
       return;
     }
     const table = model.tables.find((t) => t.name === field.table)!;
     if (field.kind === "number")
-      addVisual(makeVisual({ table: table.name, type: "card", values: [{ field: field.id, agg: defaultAgg(field) }] }));
+      addVisual(
+        makeVisual({
+          table: table.name,
+          type: "card",
+          values: [{ field: field.id, agg: defaultAgg(field) }],
+        }),
+      );
     else {
       const m = table.fields.find((f) => f.kind === "number");
       addVisual(
         makeVisual({
           table: table.name,
-          type: field.kind === "date" || /period|month|year/i.test(field.name) ? "line" : field.distinct > 12 ? "bar" : "column",
+          type:
+            field.kind === "date" || /period|month|year/i.test(field.name)
+              ? "line"
+              : field.distinct > 12
+                ? "bar"
+                : "column",
           category: field.id,
           values: [m ? { field: m.id, agg: defaultAgg(m) } : { field: field.id, agg: "count" }],
-          sort: field.kind === "date" || /period|month|year/i.test(field.name) ? "label" : "value-desc",
+          sort:
+            field.kind === "date" || /period|month|year/i.test(field.name) ? "label" : "value-desc",
           topN: field.distinct > 20 ? 20 : null,
         }),
       );
@@ -498,7 +570,11 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
         table: t.name,
         type,
         category: type === "card" ? null : (c?.id ?? null),
-        values: m ? [{ field: m.id, agg: defaultAgg(m) }] : c ? [{ field: c.id, agg: "count" }] : [],
+        values: m
+          ? [{ field: m.id, agg: defaultAgg(m) }]
+          : c
+            ? [{ field: c.id, agg: "count" }]
+            : [],
       }),
     );
   };
@@ -544,7 +620,8 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
       const values = v.values
         .filter((x) => table?.fields.some((f) => f.id === x.field))
         .map((x) => ({ field: x.field, agg: (x.agg in AGG_LABELS ? x.agg : "sum") as Agg }));
-      if (!table || values.length === 0) return void toast.error("The AI picked fields that are not in your data. Try rephrasing.");
+      if (!table || values.length === 0)
+        return void toast.error("The AI picked fields that are not in your data. Try rephrasing.");
       const type = (VISUAL_TYPES.some((t) => t.type === v.type) ? v.type : "column") as VisualType;
       addVisual(
         makeVisual({
@@ -553,7 +630,9 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
           title: v.title.slice(0, 120),
           category: v.category && table.fields.some((f) => f.id === v.category) ? v.category : null,
           values,
-          sort: (["value-desc", "value-asc", "label"].includes(v.sort) ? v.sort : "value-desc") as Visual["sort"],
+          sort: (["value-desc", "value-asc", "label"].includes(v.sort)
+            ? v.sort
+            : "value-desc") as Visual["sort"],
           topN: v.topN && v.topN > 0 ? Math.min(500, v.topN) : null,
           pins: v.pins
             .filter((p) => table.fields.some((f) => f.id === p.field) && p.values.length > 0)
@@ -585,9 +664,15 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
       const header = [cat?.name ?? "Total", ...v.values.map((x) => measureLabel(x, model))];
       const rows = (result?.rows ?? []).map((r) => [
         r.label,
-        ...(result?.keys ?? []).map((k) => (r[k] === null || r[k] === undefined ? "" : String(r[k]))),
+        ...(result?.keys ?? []).map((k) =>
+          r[k] === null || r[k] === undefined ? "" : String(r[k]),
+        ),
       ]);
-      let name = visualTitle(v, model).replace(/[\\/?*[\]:]/g, " ").slice(0, 28).trim() || `Visual ${i + 1}`;
+      let name =
+        visualTitle(v, model)
+          .replace(/[\\/?*[\]:]/g, " ")
+          .slice(0, 28)
+          .trim() || `Visual ${i + 1}`;
       for (let n = 2; used.has(name.toLowerCase()); n++) name = `${name.slice(0, 26)} ${n}`;
       used.add(name.toLowerCase());
       return { name, rows: [[visualTitle(v, model)], header, ...rows] };
@@ -603,7 +688,11 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
     .filter((x) => x.fields.length > 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground" role="dialog" aria-label="Power BI workspace">
+    <div
+      className="fixed inset-0 z-50 flex flex-col bg-background text-foreground"
+      role="dialog"
+      aria-label="Power BI workspace"
+    >
       {/* Ribbon */}
       <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-card px-3 py-2">
         <span className="flex size-8 items-center justify-center rounded-md bg-chart-3 text-primary-foreground">
@@ -612,7 +701,8 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
         <div className="mr-2">
           <h1 className="text-sm font-semibold leading-tight">Power BI workspace</h1>
           <p className="text-[11px] text-muted-foreground">
-            {model.tables.length} table{model.tables.length === 1 ? "" : "s"} · live from your workbook
+            {model.tables.length} table{model.tables.length === 1 ? "" : "s"} · live from your
+            workbook
           </p>
         </div>
         <DropdownMenu>
@@ -632,19 +722,42 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
             })}
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button size="sm" variant="outline" onClick={() => { autoBuild(); toast.success("Report rebuilt from your data"); }}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            autoBuild();
+            toast.success("Report rebuilt from your data");
+          }}
+        >
           <Wand2 className="size-4" /> Auto-build report
         </Button>
-        <Button size="sm" variant="outline" disabled={activeFilters.length === 0} onClick={() => setFilters({})}>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={activeFilters.length === 0}
+          onClick={() => setFilters({})}
+        >
           <FilterX className="size-4" /> Clear filters
         </Button>
         <Button size="sm" variant="outline" onClick={exportData}>
           <Download className="size-4" /> Export data
         </Button>
-        <Button size="sm" variant="outline" onClick={onPublish} title="Send the workbook to your Power BI online workspace">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onPublish}
+          title="Send the workbook to your Power BI online workspace"
+        >
           <CloudUpload className="size-4" /> Publish to Power BI
         </Button>
-        <Button size="sm" variant="ghost" className="ml-auto" onClick={onClose} aria-label="Close Power BI workspace">
+        <Button
+          size="sm"
+          variant="ghost"
+          className="ml-auto"
+          onClick={onClose}
+          aria-label="Close Power BI workspace"
+        >
           <X className="size-4" /> Close
         </Button>
       </header>
@@ -695,17 +808,23 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
                 <p className="flex items-center gap-1.5 px-1 py-1 font-semibold">
                   <Table2 className="size-3.5 text-primary" />
                   <span className="truncate">{t.name}</span>
-                  <span className="ml-auto text-[10px] font-normal text-muted-foreground">{t.rows.length} rows</span>
+                  <span className="ml-auto text-[10px] font-normal text-muted-foreground">
+                    {t.rows.length} rows
+                  </span>
                 </p>
                 {t.unpivoted && (
-                  <p className="px-1 pb-1 text-[10px] text-muted-foreground">Periods unpivoted into rows</p>
+                  <p className="px-1 pb-1 text-[10px] text-muted-foreground">
+                    Periods unpivoted into rows
+                  </p>
                 )}
                 {fields.map((f) => (
                   <div key={f.id} className="group flex items-center">
                     <button
                       type="button"
                       onClick={() => onFieldClick(f)}
-                      title={selected ? "Add to the selected visual" : "Create a visual from this field"}
+                      title={
+                        selected ? "Add to the selected visual" : "Create a visual from this field"
+                      }
                       className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-2 py-1 text-left hover:bg-accent"
                     >
                       <FieldIcon field={f} />
@@ -753,7 +872,10 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
               {activeFilters
                 .filter(([id]) => !page.slicers.includes(id))
                 .map(([id, vals]) => (
-                  <span key={id} className="flex h-8 items-center gap-1 rounded-md bg-accent px-2.5 text-xs">
+                  <span
+                    key={id}
+                    className="flex h-8 items-center gap-1 rounded-md bg-accent px-2.5 text-xs"
+                  >
                     <span className="font-semibold">{model.fields.get(id)?.name}:</span>
                     <span className="max-w-[10rem] truncate">{vals.join(", ")}</span>
                     <button
@@ -803,11 +925,24 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
                     onSelect={() => setSelectedId(v.id)}
                     onToggleFilter={toggleFilter}
                     onRemove={() => {
-                      updatePage((p) => ({ ...p, visuals: p.visuals.filter((x) => x.id !== v.id) }));
+                      updatePage((p) => ({
+                        ...p,
+                        visuals: p.visuals.filter((x) => x.id !== v.id),
+                      }));
                       if (selectedId === v.id) setSelectedId(null);
                     }}
                     onResize={() =>
-                      updateVisual({ ...v, size: v.size === "l" ? (v.type === "card" ? "s" : "m") : v.size === "s" ? "m" : "l" })
+                      updateVisual({
+                        ...v,
+                        size:
+                          v.size === "l"
+                            ? v.type === "card"
+                              ? "s"
+                              : "m"
+                            : v.size === "s"
+                              ? "m"
+                              : "l",
+                      })
                     }
                   />
                 ))}
@@ -826,7 +961,10 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
                 }}
                 onDoubleClick={() => {
                   const name = window.prompt("Rename page", p.name)?.trim();
-                  if (name) setPages((all) => all.map((x) => (x.id === p.id ? { ...x, name: name.slice(0, 40) } : x)));
+                  if (name)
+                    setPages((all) =>
+                      all.map((x) => (x.id === p.id ? { ...x, name: name.slice(0, 40) } : x)),
+                    );
                 }}
                 className={cn(
                   "group flex max-w-[12rem] items-center gap-1 rounded px-3 py-1 text-xs",
@@ -857,7 +995,12 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
               type="button"
               aria-label="Add page"
               onClick={() => {
-                const p: ReportPage = { id: newId("p"), name: `Page ${pages.length + 1}`, visuals: [], slicers: [] };
+                const p: ReportPage = {
+                  id: newId("p"),
+                  name: `Page ${pages.length + 1}`,
+                  visuals: [],
+                  slicers: [],
+                };
                 setPages((all) => [...all, p]);
                 setPageId(p.id);
               }}
@@ -868,14 +1011,25 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
             {selected && (
               <span className="ml-auto hidden text-[11px] text-muted-foreground sm:block">
                 Selected: {visualTitle(selected, model)} ·{" "}
-                {formatValue(runVisual(selected, model, filters)?.total["v0"] ?? null, selected.values[0] ? measureFormat(selected.values[0], model, selected) : "number", true)}
+                {formatValue(
+                  runVisual(selected, model, filters)?.total["v0"] ?? null,
+                  selected.values[0]
+                    ? measureFormat(selected.values[0], model, selected)
+                    : "number",
+                  true,
+                )}
               </span>
             )}
           </nav>
         </main>
 
         {selected && (
-          <FormatPane visual={selected} model={model} onChange={updateVisual} onClose={() => setSelectedId(null)} />
+          <FormatPane
+            visual={selected}
+            model={model}
+            onChange={updateVisual}
+            onClose={() => setSelectedId(null)}
+          />
         )}
       </div>
     </div>

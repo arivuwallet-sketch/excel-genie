@@ -34,15 +34,7 @@ export type DataModel = { tables: ModelTable[]; fields: Map<string, Field> };
 
 export type Agg = "sum" | "avg" | "count" | "distinct" | "min" | "max";
 export type VisualType =
-  | "card"
-  | "column"
-  | "bar"
-  | "line"
-  | "area"
-  | "pie"
-  | "donut"
-  | "table"
-  | "scatter";
+  "card" | "column" | "bar" | "line" | "area" | "pie" | "donut" | "table" | "scatter";
 export type VisualValue = { field: string; agg: Agg };
 export type Visual = {
   id: string;
@@ -103,14 +95,20 @@ function isPeriodHeader(v: string) {
 }
 
 function slug(s: string) {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "field";
+  return (
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_|_$/g, "") || "field"
+  );
 }
 
 function trimRow(row: string[]) {
   return row.map((v) => (v ?? "").trim());
 }
 
-const isLabelish = (v: string) => !v.startsWith("#") && (numericValue(v) === null || isPeriodHeader(v));
+const isLabelish = (v: string) =>
+  !v.startsWith("#") && (numericValue(v) === null || isPeriodHeader(v));
 
 /**
  * Picks the best table block in a sheet: a header row of ≥2 labels followed by consecutive rows
@@ -189,9 +187,7 @@ function buildTable(sheet: Sheet, usedNames: Set<string>): ModelTable | null {
   for (let i = 2; usedNames.has(name.toLowerCase()); i++) name = `${sheet.name} ${i}`;
   usedNames.add(name.toLowerCase());
 
-  const periodCols = header
-    .map((v, c) => (isPeriodHeader(v) ? c : -1))
-    .filter((c) => c >= 0);
+  const periodCols = header.map((v, c) => (isPeriodHeader(v) ? c : -1)).filter((c) => c >= 0);
   const labelCols = Array.from({ length: width }, (_, c) => c).filter(
     (c) => !periodCols.includes(c) && body.some((r) => r[c] && numericValue(r[c]!) === null),
   );
@@ -216,7 +212,12 @@ function buildTable(sheet: Sheet, usedNames: Set<string>): ModelTable | null {
       !rawLine || rawLine.length > 24 || /^[^a-z]*[A-Z]{3,}[^a-z]*[A-Z]{3,}/.test(rawLine)
         ? "Line item"
         : rawLine;
-    const names = [lineName, "Period", ...extra.map((c) => header[c] || `Column ${c + 1}`), "Value"];
+    const names = [
+      lineName,
+      "Period",
+      ...extra.map((c) => header[c] || `Column ${c + 1}`),
+      "Value",
+    ];
     const values = out.map((r) => r[r.length - 1] as number);
     const fields: Field[] = names.map((n, i) => ({
       id: `${slug(name)}.${slug(n)}`,
@@ -250,7 +251,8 @@ function buildTable(sheet: Sheet, usedNames: Set<string>): ModelTable | null {
       cells.filter((v) => typeof v === "string" && DATE_RE.test(v)).length / cells.length >= 0.6;
     const isNumber = !isDate && cells.length > 0 && nums.length / cells.length >= 0.6;
     const yearLike =
-      isNumber && nums.every((n) => Number.isInteger(n) && n >= 1900 && n <= 2100) &&
+      isNumber &&
+      nums.every((n) => Number.isInteger(n) && n >= 1900 && n <= 2100) &&
       /year|yr|fy|period/i.test(fname);
     const kind: FieldKind = isDate ? "date" : isNumber && !yearLike ? "number" : "category";
     fields.push({
@@ -326,9 +328,7 @@ export function filterRows(table: ModelTable, model: DataModel, filters: Filters
     .map(([id, vals]) => {
       const source = model.fields.get(id);
       if (!source) return null;
-      const target = table.fields.find(
-        (f) => f.name.toLowerCase() === source.name.toLowerCase(),
-      );
+      const target = table.fields.find((f) => f.name.toLowerCase() === source.name.toLowerCase());
       if (!target) return null;
       if (skip && model.fields.get(skip)?.name.toLowerCase() === target.name.toLowerCase())
         return null;
@@ -351,7 +351,11 @@ function aggregate(values: Cell[], agg: Agg): number | null {
 }
 
 export type QueryRow = { label: string } & Record<string, number | string | null>;
-export type QueryResult = { rows: QueryRow[]; keys: string[]; total: Record<string, number | null> };
+export type QueryResult = {
+  rows: QueryRow[];
+  keys: string[];
+  total: Record<string, number | null>;
+};
 
 export function valueKey(v: VisualValue, i: number) {
   return `v${i}`;
@@ -381,7 +385,8 @@ export function pinContext(visual: Visual, model: DataModel, filters: Filters): 
       if (!f) return "";
       const vals = overriddenPin(p.field, model, filters)
         ? (Object.entries(filters).find(
-            ([id, v]) => v.length && model.fields.get(id)?.name.toLowerCase() === f.name.toLowerCase(),
+            ([id, v]) =>
+              v.length && model.fields.get(id)?.name.toLowerCase() === f.name.toLowerCase(),
           )?.[1] ?? p.values)
         : p.values;
       return vals.length > 2 ? `${vals.length} ${f.name}s` : vals.join(", ");
@@ -411,7 +416,10 @@ export function runVisual(visual: Visual, model: DataModel, filters: Filters): Q
   const keys = values.map((x, i) => valueKey(x.v, i));
   const total: Record<string, number | null> = {};
   values.forEach((x, i) => {
-    total[keys[i]!] = aggregate(rows.map((r) => r[x.field!.col] ?? null), x.v.agg);
+    total[keys[i]!] = aggregate(
+      rows.map((r) => r[x.field!.col] ?? null),
+      x.v.agg,
+    );
   });
   if (!cat || cat.table !== table.name) {
     return { rows: [{ label: "Total", ...total }], keys, total };
@@ -426,7 +434,10 @@ export function runVisual(visual: Visual, model: DataModel, filters: Filters): Q
   let out: QueryRow[] = [...groups.entries()].map(([label, rs]) => {
     const row: QueryRow = { label };
     values.forEach((x, i) => {
-      row[keys[i]!] = aggregate(rs.map((r) => r[x.field!.col] ?? null), x.v.agg);
+      row[keys[i]!] = aggregate(
+        rs.map((r) => r[x.field!.col] ?? null),
+        x.v.agg,
+      );
     });
     return row;
   });
@@ -434,7 +445,11 @@ export function runVisual(visual: Visual, model: DataModel, filters: Filters): Q
     cat.kind === "date" ||
     /period|month|year|date|quarter|week/i.test(cat.name) ||
     table.shape !== "list";
-  const sort = visual.sort === "label" || (timeLike && visual.sort !== "value-asc" && ["line", "area"].includes(visual.type)) ? "label" : visual.sort;
+  const sort =
+    visual.sort === "label" ||
+    (timeLike && visual.sort !== "value-asc" && ["line", "area"].includes(visual.type))
+      ? "label"
+      : visual.sort;
   if (sort === "label") {
     if (cat.kind === "date") out.sort((a, b) => Date.parse(a.label) - Date.parse(b.label));
     else if (timeLike) {
@@ -453,20 +468,27 @@ export function runVisual(visual: Visual, model: DataModel, filters: Filters): Q
 
 // ---------- Formatting ----------
 
-export function formatValue(v: number | string | null | undefined, format: FieldFormat, compact = false) {
+export function formatValue(
+  v: number | string | null | undefined,
+  format: FieldFormat,
+  compact = false,
+) {
   if (v === null || v === undefined || v === "") return "—";
   if (typeof v === "string") return v;
   if (format === "percent")
     return new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 1 }).format(v);
   const abs = Math.abs(v);
-  const opts: Intl.NumberFormatOptions = compact && abs >= 10000
-    ? { notation: "compact", maximumFractionDigits: 1 }
-    : {
-        maximumFractionDigits:
-          format === "count" || Number.isInteger(v) ? 0 : compact ? 1 : abs < 10 ? 2 : 0,
-      };
+  const opts: Intl.NumberFormatOptions =
+    compact && abs >= 10000
+      ? { notation: "compact", maximumFractionDigits: 1 }
+      : {
+          maximumFractionDigits:
+            format === "count" || Number.isInteger(v) ? 0 : compact ? 1 : abs < 10 ? 2 : 0,
+        };
   if (format === "currency")
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", ...opts }).format(v);
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", ...opts }).format(
+      v,
+    );
   return new Intl.NumberFormat("en-US", opts).format(v);
 }
 
@@ -520,12 +542,18 @@ export function autoPage(table: ModelTable, name?: string): ReportPage {
     cats.find((f) => /period|month|year|date|quarter|week/i.test(f.name));
   const breakdown = cats.filter((f) => f !== time).sort((a, b) => a.distinct - b.distinct);
   const main = breakdown.find((f) => f.distinct <= 60) ?? breakdown[0];
-  const small = breakdown.find((f) => f !== main && f.distinct <= 8) ?? (main && main.distinct <= 8 ? main : undefined);
+  const small =
+    breakdown.find((f) => f !== main && f.distinct <= 8) ??
+    (main && main.distinct <= 8 ? main : undefined);
   const visuals: Visual[] = [];
   const m0 = measures[0];
   for (const m of measures.slice(0, 4))
     visuals.push(
-      makeVisual({ table: table.name, type: "card", values: [{ field: m.id, agg: defaultAgg(m) }] }),
+      makeVisual({
+        table: table.name,
+        type: "card",
+        values: [{ field: m.id, agg: defaultAgg(m) }],
+      }),
     );
   if (measures.length === 0)
     visuals.push(
@@ -536,13 +564,33 @@ export function autoPage(table: ModelTable, name?: string): ReportPage {
         values: [{ field: table.fields[0]!.id, agg: "count" }],
       }),
     );
-  const v0: VisualValue = m0 ? { field: m0.id, agg: defaultAgg(m0) } : { field: table.fields[0]!.id, agg: "count" };
+  const v0: VisualValue = m0
+    ? { field: m0.id, agg: defaultAgg(m0) }
+    : { field: table.fields[0]!.id, agg: "count" };
   if (time)
-    visuals.push(makeVisual({ table: table.name, type: m0 ? "area" : "line", category: time.id, values: [v0], sort: "label" }));
+    visuals.push(
+      makeVisual({
+        table: table.name,
+        type: m0 ? "area" : "line",
+        category: time.id,
+        values: [v0],
+        sort: "label",
+      }),
+    );
   if (main)
-    visuals.push(makeVisual({ table: table.name, type: main.distinct > 12 ? "bar" : "column", category: main.id, values: [v0], topN: main.distinct > 15 ? 15 : null }));
+    visuals.push(
+      makeVisual({
+        table: table.name,
+        type: main.distinct > 12 ? "bar" : "column",
+        category: main.id,
+        values: [v0],
+        topN: main.distinct > 15 ? 15 : null,
+      }),
+    );
   if (small)
-    visuals.push(makeVisual({ table: table.name, type: "donut", category: small.id, values: [v0] }));
+    visuals.push(
+      makeVisual({ table: table.name, type: "donut", category: small.id, values: [v0] }),
+    );
   if (measures.length >= 2 && main && main.distinct >= 4)
     visuals.push(
       makeVisual({

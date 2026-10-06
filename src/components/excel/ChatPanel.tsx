@@ -142,8 +142,8 @@ export function ChatPanel({
               onChange={(e) => onWebSearch(e.target.checked)}
               className="accent-[var(--sidebar-primary)]"
             />
-            <Globe className="size-3.5 text-sidebar-primary" /> Search the web for live data
-            (rates, prices, benchmarks)
+            <Globe className="size-3.5 text-sidebar-primary" /> Search the web for live data (rates,
+            prices, benchmarks)
           </label>
         )}
         <p className="mt-2 text-[11px] text-sidebar-foreground/60">

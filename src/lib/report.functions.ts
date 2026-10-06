@@ -22,13 +22,19 @@ const VISUAL_SCHEMA = {
   additionalProperties: false,
   required: ["answer", "type", "table", "category", "values", "pins", "sort", "topN", "title"],
   properties: {
-    answer: { type: "string", description: "One short sentence telling the user what the visual shows." },
+    answer: {
+      type: "string",
+      description: "One short sentence telling the user what the visual shows.",
+    },
     type: {
       type: "string",
       enum: ["card", "column", "bar", "line", "area", "pie", "donut", "table", "scatter"],
     },
     table: { type: "string" },
-    category: { type: ["string", "null"], description: "Field id to group by, or null for a single total." },
+    category: {
+      type: ["string", "null"],
+      description: "Field id to group by, or null for a single total.",
+    },
     values: {
       type: "array",
       items: {
@@ -83,7 +89,9 @@ export const askReportQuestion = createServerFn({ method: "POST" })
       .map(
         (t) =>
           `Table "${t.name}":\n${t.fields
-            .map((f) => `  - id=${f.id} name="${f.name}" kind=${f.kind} e.g. ${f.samples.join(" | ")}`)
+            .map(
+              (f) => `  - id=${f.id} name="${f.name}" kind=${f.kind} e.g. ${f.samples.join(" | ")}`,
+            )
             .join("\n")}`,
       )
       .join("\n");
@@ -96,7 +104,9 @@ export const askReportQuestion = createServerFn({ method: "POST" })
           instructions:
             "You are the Q&A engine of a Power BI report. Turn the user's question into ONE visual over the data model. Use only table names and field ids listed. 'values' are measures (kind=number fields, or count/distinct of any field). 'category' is the field to group by (kind=category or date), null for a single KPI card. Use line/area for trends over periods or dates, pie/donut for share of a total with few categories, bar for rankings with many categories, table for detail, scatter to compare two measures. Rates and percentages use avg, never sum. Tables whose fields are Line item / Period / Value are financial statements: pin the Line item to the line(s) asked about and never sum different line items together. Pin values must be copied exactly from the examples.",
           input: `DATA MODEL\n${schemaText}\n\nQUESTION: ${data.question}`,
-          text: { format: { type: "json_schema", name: "visual", strict: true, schema: VISUAL_SCHEMA } },
+          text: {
+            format: { type: "json_schema", name: "visual", strict: true, schema: VISUAL_SCHEMA },
+          },
         },
         new AbortController().signal,
       );

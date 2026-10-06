@@ -117,7 +117,10 @@ export function ReportVisual({
     config[k] = { label: names[k], color: PALETTE[i % PALETTE.length]! };
   });
   const dim = (label: string) => picked.length > 0 && !picked.includes(label);
-  const click = (label: string | undefined, e?: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }) => {
+  const click = (
+    label: string | undefined,
+    e?: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean },
+  ) => {
     if (!category || !label) return;
     onToggleFilter(category.id, label, !!(e?.ctrlKey || e?.metaKey || e?.shiftKey));
   };
@@ -145,9 +148,7 @@ export function ReportVisual({
         <p className="text-3xl font-semibold tracking-tight tabular-nums text-foreground">
           {formatValue(result.total[k0] ?? null, formats[k0] ?? "number", true)}
         </p>
-        <p className="mt-1 truncate text-xs text-muted-foreground">
-          {context || names[k0]}
-        </p>
+        <p className="mt-1 truncate text-xs text-muted-foreground">{context || names[k0]}</p>
         {visual.values[1] && (
           <p className="mt-2 text-xs text-muted-foreground">
             {names["v1"]}:{" "}
@@ -242,8 +243,21 @@ export function ReportVisual({
       <ChartContainer config={config} className="aspect-auto h-full w-full">
         <ScatterChart margin={{ left: 4, right: 12, top: 8, bottom: 4 }}>
           <CartesianGrid strokeDasharray="3 3" />
-          <XAxis type="number" dataKey={k0} name={names[k0] ?? ""} tickFormatter={compact(k0)} fontSize={11} />
-          <YAxis type="number" dataKey={k1} name={names[k1] ?? ""} tickFormatter={compact(k1)} fontSize={11} width={56} />
+          <XAxis
+            type="number"
+            dataKey={k0}
+            name={names[k0] ?? ""}
+            tickFormatter={compact(k0)}
+            fontSize={11}
+          />
+          <YAxis
+            type="number"
+            dataKey={k1}
+            name={names[k1] ?? ""}
+            tickFormatter={compact(k1)}
+            fontSize={11}
+            width={56}
+          />
           <ZAxis range={[60, 60]} />
           {tooltip}
           <Scatter
@@ -270,7 +284,13 @@ export function ReportVisual({
         >
           <CartesianGrid vertical={false} />
           <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={11} minTickGap={12} />
-          <YAxis tickLine={false} axisLine={false} fontSize={11} tickFormatter={compact(k0)} width={56} />
+          <YAxis
+            tickLine={false}
+            axisLine={false}
+            fontSize={11}
+            tickFormatter={compact(k0)}
+            width={56}
+          />
           {tooltip}
           {result.keys.length > 1 && <Legend iconSize={8} wrapperStyle={{ fontSize: 11 }} />}
           {result.keys.map((k, i) =>
@@ -310,7 +330,14 @@ export function ReportVisual({
           <CartesianGrid vertical={horizontal} horizontal={!horizontal} />
           {horizontal
             ? [
-                <XAxis key="x" type="number" tickLine={false} axisLine={false} fontSize={11} tickFormatter={compact(k0)} />,
+                <XAxis
+                  key="x"
+                  type="number"
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={11}
+                  tickFormatter={compact(k0)}
+                />,
                 <YAxis
                   key="y"
                   type="category"
@@ -332,7 +359,14 @@ export function ReportVisual({
                   interval="preserveStartEnd"
                   tickFormatter={(v: string) => (v.length > 12 ? `${v.slice(0, 11)}…` : v)}
                 />,
-                <YAxis key="y" tickLine={false} axisLine={false} fontSize={11} tickFormatter={compact(k0)} width={56} />,
+                <YAxis
+                  key="y"
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={11}
+                  tickFormatter={compact(k0)}
+                  width={56}
+                />,
               ]}
           {tooltip}
           {result.keys.length > 1 && <Legend iconSize={8} wrapperStyle={{ fontSize: 11 }} />}
@@ -344,7 +378,9 @@ export function ReportVisual({
               fill={PALETTE[i % PALETTE.length]!}
               radius={horizontal ? [0, 3, 3, 0] : [3, 3, 0, 0]}
               className="cursor-pointer"
-              onClick={(d: { label?: string }, _i: number, e: React.MouseEvent) => click(d.label, e)}
+              onClick={(d: { label?: string }, _i: number, e: React.MouseEvent) =>
+                click(d.label, e)
+              }
             >
               {rows.map((r) => (
                 <Cell key={r.label} fillOpacity={dim(r.label) ? 0.25 : 1} />
@@ -399,7 +435,11 @@ export function ReportVisual({
             }}
             className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
           >
-            {visual.size === "l" ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+            {visual.size === "l" ? (
+              <Minimize2 className="size-3.5" />
+            ) : (
+              <Maximize2 className="size-3.5" />
+            )}
           </button>
           <button
             type="button"
