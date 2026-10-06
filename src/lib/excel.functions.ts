@@ -18,6 +18,7 @@ import {
 } from "./workbook-limits";
 import { agentInput, agentSystem } from "./agent-prompt";
 import { completeAstra, ASTRA_MODEL } from "./openai-astra.server";
+import { researchWeb, type WebResearch } from "./web-research.server";
 const SheetSchema = z.object({
   name: z.string().min(1).max(31),
   rows: z.array(z.array(z.string().max(MAX_CELL_LENGTH)).max(MAX_COLS)).max(MAX_ROWS),
@@ -32,6 +33,7 @@ const RequestSchema = z.object({
   provider: z.enum(["openai", "lovable"]),
   quality: z.enum(["auto", "fast", "reasoning"]).default("auto"),
   activeSheet: z.string().max(31).optional(),
+  webSearch: z.boolean().default(false),
 });
 import type { AgentResult } from "./assistant-types";
 export type AgentResponse =
@@ -87,7 +89,24 @@ export const runExcelAgent = createServerFn({ method: "POST" })
           : process.env["EXCEL_AI_FAST_MODEL"] || "google/gemini-3.8-flash";
       const gateway = isAstra ? null : createLovableAiGatewayProvider(key);
       const signal = AbortSignal.timeout(isAstra ? 300000 : 120000);
-      const base = agentInput(data);
+      let research: WebResearch | null = null;
+      if (data.webSearch) {
+        const lovableKey = process.env["LOVABLE_API_KEY"];
+        if (!lovableKey)
+          return {
+            ok: false,
+            requestId,
+            error: {
+              code: "AI_NOT_CONFIGURED",
+              message: "Web search needs Lovable AI to be connected for this deployment.",
+              retryable: false,
+            },
+          };
+        research = await researchWeb(lovableKey, data.prompt, AbortSignal.timeout(180000));
+      }
+      const base = research
+        ? `${agentInput(data)}\n\nLIVE WEB RESEARCH (retrieved today; use these figures where relevant, put each in a labelled input cell and mention the source in a note column):\n${research.summary}\nSources:\n${research.sources.map((s) => `- ${s.title}: ${s.url}`).join("\n")}`
+        : agentInput(data);
       const parsed = await generateProposal({
         sheets: data.sheets,
         mode: data.mode,
@@ -108,7 +127,15 @@ export const runExcelAgent = createServerFn({ method: "POST" })
       });
       return {
         ok: true,
-        result: { ...parsed, model: isAstra ? `${model} · max` : model, mode: data.mode },
+        result: {
+          ...parsed,
+          reply:
+            research && research.sources.length
+              ? `${parsed.reply}\n\n**Web sources**\n${research.sources.map((s) => `- [${s.title}](${s.url})`).join("\n")}`
+              : parsed.reply,
+          model: `${isAstra ? `${model} · max` : model}${research ? " · web" : ""}`,
+          mode: data.mode,
+        },
       };
     } catch (error) {
       const failure =
