@@ -42,7 +42,7 @@ import {
   type Workspace,
 } from "@/lib/workspace-storage";
 import { ChatPanel, type ChatMessage } from "@/components/excel/ChatPanel";
-import { DashboardHub } from "@/components/excel/DashboardHub";
+import { PowerBiWorkspace } from "@/components/excel/PowerBiWorkspace";
 import { ModelControls } from "@/components/excel/ModelControls";
 import {
   findAssumptions,
@@ -656,7 +656,7 @@ function Index() {
           <Calculator className="size-4" /> Calculate
         </Button>
         <Button size="sm" variant="outline" onClick={() => setDashboardOpen(true)}>
-          <BarChart3 className="size-4" /> Dashboard
+          <BarChart3 className="size-4" /> Power BI
         </Button>
 
         <DropdownMenu>
@@ -1003,11 +1003,12 @@ function Index() {
         onPrompt={(text) => void send(text)}
       />
 
-      <DashboardHub
+      <PowerBiWorkspace
         open={dashboardOpen}
-        onOpenChange={setDashboardOpen}
+        onClose={() => setDashboardOpen(false)}
         sheets={sheets}
-        activeIndex={activeIndex}
+        aiAvailable={!!cloudStatus?.lovable}
+        onPublish={() => void pushPowerBiWorkbook()}
       />
 
       {dragging && (
