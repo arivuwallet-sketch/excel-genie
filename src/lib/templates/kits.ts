@@ -1,4 +1,4 @@
-import { S, type FinancialTemplate, type TemplateTier } from "./types.ts";
+import { S, type FinancialTemplate } from "./types.ts";
 
 /**
  * Spec-driven template kits. Each kit is a fully formula-linked workbook
@@ -120,7 +120,9 @@ export function kpiDashboard(spec: DashSpec): FinancialTemplate {
         `=SUMIFS(${mCol(k)},${monthR},$B$2)`,
         `=SUMIFS(${mCol(k)},${monthR},$B$3)`,
         `=IFERROR(C${r}/D${r}-1,0)`,
-        lower.has(m.name) ? `=IF(E${r}<=0,"▲ Improving","▼ Watch")` : `=IF(E${r}>=0,"▲ Up","▼ Down")`,
+        lower.has(m.name)
+          ? `=IF(E${r}<=0,"▲ Improving","▼ Watch")`
+          : `=IF(E${r}>=0,"▲ Up","▼ Down")`,
       ]);
     });
     spec.ratios.forEach((ra, k) => {
@@ -131,7 +133,9 @@ export function kpiDashboard(spec: DashSpec): FinancialTemplate {
         `=IFERROR(${ra.f(refs("C"))},0)`,
         `=IFERROR(${ra.f(refs("D"))},0)`,
         `=IFERROR(C${r}/D${r}-1,0)`,
-        ra.lowerBetter ? `=IF(C${r}<=D${r},"▲ Improving","▼ Watch")` : `=IF(C${r}>=D${r},"▲ Up","▼ Down")`,
+        ra.lowerBetter
+          ? `=IF(C${r}<=D${r},"▲ Improving","▼ Watch")`
+          : `=IF(C${r}>=D${r},"▲ Up","▼ Down")`,
       ]);
     });
     d.push([]);
@@ -197,7 +201,10 @@ export function kpiDashboard(spec: DashSpec): FinancialTemplate {
     );
     checks.push([`No blank ${aName.toLowerCase()} values`, `=COUNTBLANK(${aR})=0`]);
     checks.push(["Latest month exists in data", `=COUNTIF(${monthR},Dashboard!B2)>0`]);
-    checks.push(["Shares add to 100%", `=ABS(Dashboard!${col(1 + shown.length)}${aTotal}-1)<0.0001`]);
+    checks.push([
+      "Shares add to 100%",
+      `=ABS(Dashboard!${col(1 + shown.length)}${aTotal}-1)<0.0001`,
+    ]);
     const audit: (string | number)[][] = [
       ["DASHBOARD CHECKS"],
       [],
@@ -257,7 +264,9 @@ export function projectionModel(spec: ProjSpec): FinancialTemplate {
       [`${spec.price[0]} (year 1)`, spec.price[1], "Average realised"],
       [`${spec.price[0]} growth %`, spec.price[2], "Annual"],
       ["Direct cost % of revenue", spec.cogsPct, "Cost of sales"],
-      ...spec.opex.map(([l, p]) => [`${l} % of revenue`, p, "Variable opex"] as [string, number, string]),
+      ...spec.opex.map(
+        ([l, p]) => [`${l} % of revenue`, p, "Variable opex"] as [string, number, string],
+      ),
       [`${spec.fixedCost[0]} (year 1)`, spec.fixedCost[1], "Fixed cost"],
       [`${spec.fixedCost[0]} growth %`, spec.fixedCost[2], "Annual inflation"],
       ["D&A % of revenue", spec.daPct, ""],
@@ -290,13 +299,19 @@ export function projectionModel(spec: ProjSpec): FinancialTemplate {
     const uL = spec.units[0];
     const pL = spec.price[0];
     add(uL, (c, i) =>
-      i === 0 ? `=${ar(`${uL} (year 1)`)}` : `=${prev(c)}${rows.length + 1}*(1+${ar(`${uL} growth %`)})`,
+      i === 0
+        ? `=${ar(`${uL} (year 1)`)}`
+        : `=${prev(c)}${rows.length + 1}*(1+${ar(`${uL} growth %`)})`,
     );
     add(pL, (c, i) =>
-      i === 0 ? `=${ar(`${pL} (year 1)`)}` : `=${prev(c)}${rows.length + 1}*(1+${ar(`${pL} growth %`)})`,
+      i === 0
+        ? `=${ar(`${pL} (year 1)`)}`
+        : `=${prev(c)}${rows.length + 1}*(1+${ar(`${pL} growth %`)})`,
     );
     add("Revenue", (c) => `=${R(uL, c)}*${R(pL, c)}`);
-    add("Revenue growth %", (c, i) => (i === 0 ? "" : `=IFERROR(${R("Revenue", c)}/${R("Revenue", prev(c))}-1,0)`));
+    add("Revenue growth %", (c, i) =>
+      i === 0 ? "" : `=IFERROR(${R("Revenue", c)}/${R("Revenue", prev(c))}-1,0)`,
+    );
     add("Direct costs", (c) => `=-${R("Revenue", c)}*${ar("Direct cost % of revenue")}`);
     add("Gross profit", (c) => `=${R("Revenue", c)}+${R("Direct costs", c)}`);
     add("Gross margin %", (c) => `=IFERROR(${R("Gross profit", c)}/${R("Revenue", c)},0)`);
@@ -331,14 +346,20 @@ export function projectionModel(spec: ProjSpec): FinancialTemplate {
         `=${R("Net income", c)}+${R("Add back D&A", c)}+${R("Capital expenditure", c)}+${R("Change in working capital", c)}`,
     );
     add("Discount factor", (_c, i) => `=1/(1+${ar("WACC")})^${i + 1}`);
-    add("PV of free cash flow", (c) => `=${R("Unlevered free cash flow", c)}*${R("Discount factor", c)}`);
+    add(
+      "PV of free cash flow",
+      (c) => `=${R("Unlevered free cash flow", c)}*${R("Discount factor", c)}`,
+    );
 
     const fcf = (c: string) => `Model!${R("Unlevered free cash flow", c)}`;
     const val = S("Valuation", [
       ["DCF VALUATION"],
       [],
       ["Metric", "Value"],
-      ["Sum of PV of free cash flow", `=SUM(Model!B${at["PV of free cash flow"]}:F${at["PV of free cash flow"]})`],
+      [
+        "Sum of PV of free cash flow",
+        `=SUM(Model!B${at["PV of free cash flow"]}:F${at["PV of free cash flow"]})`,
+      ],
       [
         "Terminal value (Gordon growth)",
         `=IFERROR(${fcf("F")}*(1+${ar("Terminal growth %")})/(${ar("WACC")}-${ar("Terminal growth %")}),0)`,
@@ -347,7 +368,10 @@ export function projectionModel(spec: ProjSpec): FinancialTemplate {
       ["Enterprise value", "=B4+B6"],
       ["Terminal value % of EV", "=IFERROR(B6/B7,0)"],
       ["EV / Year-1 EBITDA", `=IFERROR(B7/Model!B${at["EBITDA"]},0)`],
-      ["5-year revenue CAGR", `=IFERROR((Model!F${at["Revenue"]}/Model!B${at["Revenue"]})^(1/4)-1,0)`],
+      [
+        "5-year revenue CAGR",
+        `=IFERROR((Model!F${at["Revenue"]}/Model!B${at["Revenue"]})^(1/4)-1,0)`,
+      ],
       [],
       ["SENSITIVITY — ENTERPRISE VALUE", "", "WACC →"],
       ...(() => {
@@ -376,7 +400,10 @@ export function projectionModel(spec: ProjSpec): FinancialTemplate {
       ["Check", "Result"],
       ["WACC above terminal growth", `=${ar("WACC")}>${ar("Terminal growth %")}`],
       ["Revenue positive every year", `=MIN(Model!B${at["Revenue"]}:F${at["Revenue"]})>0`],
-      ["Gross margin between 0% and 100%", `=AND(Model!B${at["Gross margin %"]}>0,Model!B${at["Gross margin %"]}<1)`],
+      [
+        "Gross margin between 0% and 100%",
+        `=AND(Model!B${at["Gross margin %"]}>0,Model!B${at["Gross margin %"]}<1)`,
+      ],
       [
         "EBITDA = gross profit + opex (FY2030)",
         `=ABS(Model!F${at["EBITDA"]}-Model!F${at["Gross profit"]}-Model!F${at["Total operating expenses"]})<0.01`,
@@ -389,7 +416,7 @@ export function projectionModel(spec: ProjSpec): FinancialTemplate {
   return {
     id: spec.id,
     name: spec.name,
-    tier: "Industry" as TemplateTier,
+    tier: "Industry",
     blurb: `${spec.industry}: ${spec.units[0].toLowerCase()} × ${spec.price[0].toLowerCase()} revenue build, cost structure, free cash flow and DCF with a WACC/growth sensitivity grid.`,
     features: ["Driver-based revenue", "5-year P&L + FCF", "DCF & sensitivity", "Integrity checks"],
     prompt: `Add a downside / base / upside scenario switch to this ${spec.industry.toLowerCase()} model, flexing ${spec.units[0].toLowerCase()} growth and ${spec.price[0].toLowerCase()}.`,
@@ -413,7 +440,18 @@ const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
 export function budgetTracker(spec: BudgetSpec): FinancialTemplate {
   const build = () => {
     const rand = rng(spec.id);
-    const head = ["Group", "Line item", "Annual budget", "Monthly budget", ...MON, "YTD actual", "YTD budget", "Variance", "Variance %", "Status"];
+    const head = [
+      "Group",
+      "Line item",
+      "Annual budget",
+      "Monthly budget",
+      ...MON,
+      "YTD actual",
+      "YTD budget",
+      "Variance",
+      "Variance %",
+      "Status",
+    ];
     const rows: (string | number)[][] = [
       [`${spec.name.toUpperCase()}`],
       ["Months elapsed", 6, "← inputs in blue; actuals by month"],
@@ -443,7 +481,9 @@ export function budgetTracker(spec: BudgetSpec): FinancialTemplate {
     rows.push([
       "Total",
       "",
-      ...["C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"].map((c) => `=SUM(${c}${start}:${c}${end})`),
+      ...["C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"].map(
+        (c) => `=SUM(${c}${start}:${c}${end})`,
+      ),
       `=IFERROR(M${tot}/L${tot},0)`,
       `=IF(N${tot}>=0,"Under budget","Over budget")`,
     ]);
@@ -451,7 +491,15 @@ export function budgetTracker(spec: BudgetSpec): FinancialTemplate {
     const sum: (string | number)[][] = [
       ["SUMMARY BY GROUP"],
       [],
-      ["Group", "Annual budget", "YTD actual", "YTD budget", "Variance", "Variance %", "Share of spend"],
+      [
+        "Group",
+        "Annual budget",
+        "YTD actual",
+        "YTD budget",
+        "Variance",
+        "Variance %",
+        "Share of spend",
+      ],
     ];
     groups.forEach((g, i) => {
       const r = 4 + i;
@@ -467,7 +515,15 @@ export function budgetTracker(spec: BudgetSpec): FinancialTemplate {
       ]);
     });
     const gEnd = 3 + groups.length;
-    sum.push(["Total", `=SUM(B4:B${gEnd})`, `=SUM(C4:C${gEnd})`, `=SUM(D4:D${gEnd})`, `=SUM(E4:E${gEnd})`, `=IFERROR(E${gEnd + 1}/D${gEnd + 1},0)`, `=SUM(G4:G${gEnd})`]);
+    sum.push([
+      "Total",
+      `=SUM(B4:B${gEnd})`,
+      `=SUM(C4:C${gEnd})`,
+      `=SUM(D4:D${gEnd})`,
+      `=SUM(E4:E${gEnd})`,
+      `=IFERROR(E${gEnd + 1}/D${gEnd + 1},0)`,
+      `=SUM(G4:G${gEnd})`,
+    ]);
     sum.push([]);
     sum.push(["MONTHLY SPEND"]);
     sum.push(["Month", "Actual", "Budget", "Variance"]);

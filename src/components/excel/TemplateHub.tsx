@@ -36,6 +36,7 @@ const TIER_BLURB: Record<TemplateTier, string> = {
   Advanced: "DCF, LBO, M&A accretion/dilution, SaaS metrics and scenario engines.",
   Quantitative: "Monte Carlo, Black-Scholes Greeks, risk and statistical engines.",
   Dashboards: "KPI boards, executive summaries and interactive reporting views.",
+  Industry: "Driver-based 5-year forecasts with free cash flow and DCF for specific industries.",
   Institutional: "Cap tables, bank, real estate, REIT, shipping and FinOps models.",
   Operations: "Healthcare capacity, renewable generation, construction and bid costing.",
 };
