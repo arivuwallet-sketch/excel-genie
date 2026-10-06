@@ -98,19 +98,39 @@ function trimRow(row: string[]) {
   return row.map((v) => (v ?? "").trim());
 }
 
-/** First row (in the top 15) with ≥2 labels, no data-like numbers, followed by a non-empty row. */
+const isLabelish = (v: string) => !v.startsWith("#") && (numericValue(v) === null || isPeriodHeader(v));
+
+/**
+ * Picks the best table block in a sheet: a header row of ≥2 labels followed by consecutive rows
+ * carrying numbers. Scored by header width × block height so a small "Label | value" inputs block
+ * at the top loses to the real data table below it.
+ */
 function findHeader(rows: string[][]): number {
-  for (let r = 0; r < Math.min(rows.length - 1, 15); r++) {
+  let best = -1,
+    bestScore = 0;
+  for (let r = 0; r < Math.min(rows.length - 1, 80); r++) {
     const row = trimRow(rows[r] ?? []);
     const filled = row.filter(Boolean);
-    if (filled.length < 2) continue;
-    const labelish = filled.every((v) => numericValue(v) === null || isPeriodHeader(v));
-    if (!labelish) continue;
-    const next = trimRow(rows[r + 1] ?? []).filter(Boolean);
-    const after = trimRow(rows[r + 2] ?? []).filter(Boolean);
-    if (next.length >= 2 || after.length >= 2) return r;
+    if (filled.length < 2 || !filled.every(isLabelish)) continue;
+    let height = 0,
+      blanks = 0;
+    for (let k = r + 1; k < Math.min(rows.length, r + 400); k++) {
+      const next = trimRow(rows[k] ?? []);
+      if (!next.some(Boolean)) {
+        if (++blanks >= 2) break;
+        continue;
+      }
+      blanks = 0;
+      if (next.some((v) => numericValue(v) !== null)) height++;
+    }
+    if (height < 2) continue;
+    const score = filled.length * Math.min(height, 60);
+    if (score > bestScore) {
+      bestScore = score;
+      best = r;
+    }
   }
-  return -1;
+  return best;
 }
 
 function inferFormat(name: string, values: number[]): FieldFormat {
@@ -141,7 +161,7 @@ function buildTable(sheet: Sheet, usedNames: Set<string>): ModelTable | null {
   for (let r = h + 1; r < rows.length; r++) {
     const row = trimRow(rows[r] ?? []);
     if (!row.some(Boolean)) {
-      if (++blanks >= 3) break;
+      if (++blanks >= 2) break;
       continue;
     }
     blanks = 0;
