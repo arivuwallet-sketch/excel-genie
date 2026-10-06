@@ -44,12 +44,25 @@ function scalar(value: Value): Scalar {
   if (Array.isArray(value)) return unsupported();
   return value;
 }
+/** Excel coerces date-looking text in arithmetic; ISO dates become serial numbers (1900 system). */
+export function isoDateSerial(raw: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw.trim());
+  if (!m) return null;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const t = Date.UTC(y, mo - 1, d);
+  const back = new Date(t);
+  if (back.getUTCFullYear() !== y || back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d)
+    return null;
+  return Math.round((t - Date.UTC(1899, 11, 30)) / 86_400_000);
+}
 function number(value: Value): number {
   const v = scalar(value);
   if (v === null || v === "") return 0;
   if (typeof v === "number") return v;
   if (typeof v === "boolean") return Number(v);
   if (/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(v.trim())) return Number(v);
+  const serial = isoDateSerial(v);
+  if (serial !== null) return serial;
   throw new CalcError("#VALUE!");
 }
 const text = (v: Value) => {
