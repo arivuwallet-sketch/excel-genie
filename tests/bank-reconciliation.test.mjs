@@ -37,7 +37,14 @@ test("bank reconciliation catches a mis-keyed amount and a broken statement tota
 
 test("ISO dates work in arithmetic and export as real Excel dates", async () => {
   const sheets = [
-    { name: "D", rows: [["2026-03-31", "2026-03-02", "=A1-B1", "=B1"], ["Fee ($)", "12.34", "", ""], ["x", "1.5", "2.25", "3.75"]] },
+    {
+      name: "D",
+      rows: [
+        ["2026-03-31", "2026-03-02", "=A1-B1", "=B1"],
+        ["Fee ($)", "12.34", "", ""],
+        ["x", "1.5", "2.25", "3.75"],
+      ],
+    },
   ];
   assert.equal(calculateWorkbook(sheets).sheets[0].rows[0][2], "29");
   const ws = (await buildStyledWorkbook(sheets)).getWorksheet("D");

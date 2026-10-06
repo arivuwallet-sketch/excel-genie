@@ -51,7 +51,8 @@ export function isoDateSerial(raw: string): number | null {
   const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
   const t = Date.UTC(y, mo - 1, d);
   const back = new Date(t);
-  if (back.getUTCFullYear() !== y || back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d) return null;
+  if (back.getUTCFullYear() !== y || back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d)
+    return null;
   return Math.round((t - Date.UTC(1899, 11, 30)) / 86_400_000);
 }
 function number(value: Value): number {
