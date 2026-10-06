@@ -7,7 +7,7 @@ export type WebSource = { title: string; url: string };
 export type WebResearch = { summary: string; sources: WebSource[] };
 
 type Annotation = { type?: string; title?: string; url?: string };
-type OutputItem = {
+export type OutputItem = {
   type: string;
   content?: { type: string; text?: string; annotations?: Annotation[] }[];
 };
@@ -23,7 +23,7 @@ function cleanUrl(url: string) {
   }
 }
 
-async function streamResponses(
+export async function streamGatewayResponses(
   key: string,
   body: Record<string, unknown>,
   signal: AbortSignal,
@@ -89,7 +89,7 @@ export async function researchWeb(
   question: string,
   signal: AbortSignal,
 ): Promise<WebResearch> {
-  const output = await streamResponses(
+  const output = await streamGatewayResponses(
     key,
     {
       model: RESEARCH_MODEL,
