@@ -45,6 +45,7 @@ import {
   defaultAgg,
   distinctValues,
   formatValue,
+  labelFormat,
   makeVisual,
   measureFormat,
   measureLabel,
@@ -511,7 +512,7 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
     }
     const local = parseQuestion(q, model, defaultTable()?.name);
     if (local) {
-      addVisual({ ...local, title: "" });
+      addVisual(local);
       setQuestion("");
       return;
     }
@@ -530,7 +531,9 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
               id: f.id,
               name: f.name,
               kind: f.kind,
-              samples: distinctValues(f, model).slice(0, 5).map((s) => s.slice(0, 60)),
+              samples: distinctValues(f, model)
+                .slice(0, f.kind === "category" ? 40 : 5)
+                .map((s) => s.slice(0, 60)),
             })),
           })),
         },
@@ -552,6 +555,13 @@ export function PowerBiWorkspace({ open, onClose, sheets, aiAvailable, onPublish
           values,
           sort: (["value-desc", "value-asc", "label"].includes(v.sort) ? v.sort : "value-desc") as Visual["sort"],
           topN: v.topN && v.topN > 0 ? Math.min(500, v.topN) : null,
+          pins: v.pins
+            .filter((p) => table.fields.some((f) => f.id === p.field) && p.values.length > 0)
+            .map((p) => ({ field: p.field, values: p.values.slice(0, 50) })),
+          format:
+            table.shape !== "list" && v.pins.length === 1 && v.pins[0]!.values.length === 1
+              ? labelFormat(v.pins[0]!.values[0]!, [])
+              : null,
         }),
       );
       if (v.answer) toast.success(v.answer.slice(0, 200));

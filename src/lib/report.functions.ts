@@ -7,7 +7,7 @@ const FieldSchema = z.object({
   id: z.string().max(200),
   name: z.string().max(200),
   kind: z.enum(["category", "number", "date"]),
-  samples: z.array(z.string().max(80)).max(8),
+  samples: z.array(z.string().max(80)).max(40),
 });
 const InputSchema = z.object({
   question: z.string().trim().min(1).max(1000),
@@ -20,7 +20,7 @@ const InputSchema = z.object({
 const VISUAL_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["answer", "type", "table", "category", "values", "sort", "topN", "title"],
+  required: ["answer", "type", "table", "category", "values", "pins", "sort", "topN", "title"],
   properties: {
     answer: { type: "string", description: "One short sentence telling the user what the visual shows." },
     type: {
@@ -41,6 +41,20 @@ const VISUAL_SCHEMA = {
         },
       },
     },
+    pins: {
+      type: "array",
+      description:
+        "Visual-level filters, e.g. keep only the 'Revenue' line item or only Region 'West'. Empty array when none.",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["field", "values"],
+        properties: {
+          field: { type: "string" },
+          values: { type: "array", items: { type: "string" } },
+        },
+      },
+    },
     sort: { type: "string", enum: ["value-desc", "value-asc", "label"] },
     topN: { type: ["integer", "null"] },
     title: { type: "string" },
@@ -53,6 +67,7 @@ export type QaVisual = {
   table: string;
   category: string | null;
   values: { field: string; agg: string }[];
+  pins: { field: string; values: string[] }[];
   sort: string;
   topN: number | null;
   title: string;
@@ -79,7 +94,7 @@ export const askReportQuestion = createServerFn({ method: "POST" })
           model: RESEARCH_MODEL,
           reasoning: { effort: "low" },
           instructions:
-            "You are the Q&A engine of a Power BI report. Turn the user's question into ONE visual over the data model. Use only table names and field ids listed. 'values' are measures (kind=number fields, or count/distinct of any field). 'category' is the field to group by (kind=category or date), null for a single KPI card. Use line/area for trends over periods or dates, pie/donut for share of a total with few categories, bar for rankings with many categories, table for detail, scatter to compare two measures. Rates and percentages use avg, never sum.",
+            "You are the Q&A engine of a Power BI report. Turn the user's question into ONE visual over the data model. Use only table names and field ids listed. 'values' are measures (kind=number fields, or count/distinct of any field). 'category' is the field to group by (kind=category or date), null for a single KPI card. Use line/area for trends over periods or dates, pie/donut for share of a total with few categories, bar for rankings with many categories, table for detail, scatter to compare two measures. Rates and percentages use avg, never sum. Tables whose fields are Line item / Period / Value are financial statements: pin the Line item to the line(s) asked about and never sum different line items together. Pin values must be copied exactly from the examples.",
           input: `DATA MODEL\n${schemaText}\n\nQUESTION: ${data.question}`,
           text: { format: { type: "json_schema", name: "visual", strict: true, schema: VISUAL_SCHEMA } },
         },

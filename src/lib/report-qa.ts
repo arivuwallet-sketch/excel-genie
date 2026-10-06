@@ -137,7 +137,16 @@ export function parseQuestion(question: string, model: DataModel, preferTable?: 
   return makeVisual({
     table: table.name,
     pins,
-    format: pinnedLine && valueHits.length === 1 ? labelFormat(pinnedLine, []) : null,
+    format:
+      pinnedLine && valueHits.length === 1
+        ? labelFormat(
+            pinnedLine,
+            table.rows
+              .filter((r) => r[valueHits[0]!.f.col] === pinnedLine)
+              .map((r) => r[table.fields.find((f) => f.kind === "number")?.col ?? 0])
+              .filter((v): v is number => typeof v === "number"),
+          )
+        : null,
     title: pinnedLine ? `${valueHits.map((v) => v.value).join(", ")}${category ? ` by ${category.name}` : ""}` : "",
     type: category ? finalType : "card",
     category: category && finalType !== "card" ? category.id : null,
