@@ -213,7 +213,9 @@ function buildTable(sheet: Sheet, usedNames: Set<string>): ModelTable | null {
     if (out.length === 0) return null;
     const rawLine = header[lineCol] ?? "";
     const lineName =
-      !rawLine || rawLine.length > 24 || rawLine === rawLine.toUpperCase() ? "Line item" : rawLine;
+      !rawLine || rawLine.length > 24 || /^[^a-z]*[A-Z]{3,}[^a-z]*[A-Z]{3,}/.test(rawLine)
+        ? "Line item"
+        : rawLine;
     const names = [lineName, "Period", ...extra.map((c) => header[c] || `Column ${c + 1}`), "Value"];
     const values = out.map((r) => r[r.length - 1] as number);
     const fields: Field[] = names.map((n, i) => ({
@@ -364,6 +366,30 @@ function periodOrder(table: ModelTable, col: number) {
   return order;
 }
 
+export function overriddenPin(field: string, model: DataModel, filters: Filters) {
+  const name = model.fields.get(field)?.name.toLowerCase();
+  return Object.entries(filters).some(
+    ([id, vals]) => vals.length > 0 && model.fields.get(id)?.name.toLowerCase() === name,
+  );
+}
+
+/** Human-readable context for a visual's pins, reflecting slicer overrides. */
+export function pinContext(visual: Visual, model: DataModel, filters: Filters): string {
+  return (visual.pins ?? [])
+    .map((p) => {
+      const f = model.fields.get(p.field);
+      if (!f) return "";
+      const vals = overriddenPin(p.field, model, filters)
+        ? (Object.entries(filters).find(
+            ([id, v]) => v.length && model.fields.get(id)?.name.toLowerCase() === f.name.toLowerCase(),
+          )?.[1] ?? p.values)
+        : p.values;
+      return vals.length > 2 ? `${vals.length} ${f.name}s` : vals.join(", ");
+    })
+    .filter(Boolean)
+    .join(" · ");
+}
+
 export function runVisual(visual: Visual, model: DataModel, filters: Filters): QueryResult | null {
   const table = model.tables.find((t) => t.name === visual.table);
   if (!table) return null;
@@ -376,6 +402,9 @@ export function runVisual(visual: Visual, model: DataModel, filters: Filters): Q
   for (const pin of visual.pins ?? []) {
     const ff = model.fields.get(pin.field);
     if (!ff || ff.table !== table.name || pin.values.length === 0) continue;
+    // A slicer / cross-filter on the same field overrides the visual's default pin
+    // (e.g. cards pinned to the latest period follow the period the user picks).
+    if (overriddenPin(pin.field, model, filters)) continue;
     const set = new Set(pin.values);
     rows = rows.filter((r) => set.has(cellText(r[ff.col] ?? null)));
   }
@@ -643,7 +672,7 @@ function matrixPage(table: ModelTable, name?: string): ReportPage {
     makeVisual({
       table: table.name,
       type: "card",
-      title: `${l} · ${last}`,
+      title: l,
       values: [{ field: value.id, agg: "sum" }],
       pins: [
         { field: line.id, values: [l] },
@@ -670,7 +699,7 @@ function matrixPage(table: ModelTable, name?: string): ReportPage {
     makeVisual({
       table: table.name,
       type: "table",
-      title: `${table.name} — ${last}`,
+      title: table.name,
       category: line.id,
       values: [{ field: value.id, agg: "sum" }],
       pins: [{ field: period.id, values: [last] }],

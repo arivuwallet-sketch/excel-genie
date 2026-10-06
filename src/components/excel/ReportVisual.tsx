@@ -26,6 +26,7 @@ import {
   labelFormat,
   measureFormat,
   measureLabel,
+  pinContext,
   runVisual,
   visualTitle,
   type DataModel,
@@ -100,6 +101,10 @@ export function ReportVisual({
 }: Props) {
   const result = useMemo(() => runVisual(visual, model, filters), [visual, model, filters]);
   const title = visualTitle(visual, model);
+  const context = pinContext(visual, model, filters)
+    .split(" · ")
+    .filter((c) => c && c !== title)
+    .join(" · ");
   const category = visual.category ? model.fields.get(visual.category) : undefined;
   const picked = category ? (filters[category.id] ?? []) : [];
   const formats: Record<string, FieldFormat> = {};
@@ -140,7 +145,9 @@ export function ReportVisual({
         <p className="text-3xl font-semibold tracking-tight tabular-nums text-foreground">
           {formatValue(result.total[k0] ?? null, formats[k0] ?? "number", true)}
         </p>
-        <p className="mt-1 truncate text-xs text-muted-foreground">{names[k0]}</p>
+        <p className="mt-1 truncate text-xs text-muted-foreground">
+          {context || names[k0]}
+        </p>
         {visual.values[1] && (
           <p className="mt-2 text-xs text-muted-foreground">
             {names["v1"]}:{" "}
@@ -376,7 +383,12 @@ export function ReportVisual({
       aria-label={title}
     >
       <header className="flex shrink-0 items-center gap-1 px-3 pt-2">
-        <h3 className="min-w-0 flex-1 truncate text-xs font-semibold text-foreground">{title}</h3>
+        <h3 className="min-w-0 flex-1 truncate text-xs font-semibold text-foreground">
+          {title}
+          {context && visual.type !== "card" && (
+            <span className="ml-1.5 font-normal text-muted-foreground">· {context}</span>
+          )}
+        </h3>
         <div className="flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
           <button
             type="button"
