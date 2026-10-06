@@ -70,6 +70,16 @@ function colHeaderFor(rows: string[][], r: number, c: number) {
   return "";
 }
 
+const YEAR_RE = /^(19|20)\d{2}$/;
+/** A 4-digit value is a year only in a year context — not an amount like 9600 in a ledger. */
+function isYearCell(rows: string[][], r: number, c: number, raw: string, ctx: string) {
+  if (!YEAR_RE.test(raw.trim())) return false;
+  if (/\b(year|yr|fy|vintage|cohort|period)\b/i.test(ctx)) return true;
+  // Timeline header rows: every number in the row is a year.
+  const nums = (rows[r] ?? []).filter((v) => isNumeric(v));
+  return nums.length >= 2 && nums.every((v) => YEAR_RE.test(v.trim()));
+}
+
 /** Build the styled, formula-driven workbook. Pure — no browser APIs — so it's directly testable. */
 export async function buildStyledWorkbook(sheets: Sheet[]) {
   const ExcelJS = (await import("exceljs")).default;
@@ -115,8 +125,8 @@ export async function buildStyledWorkbook(sheets: Sheet[]) {
           const n = toNumber(raw);
           cell.value = n ?? raw;
           cell.font = { ...cell.font, color: { argb: INPUT_BLUE } };
-          cell.numFmt = /^\d{4}$/.test(raw.trim())
-            ? "@" // a bare 4-digit number (e.g. a year) reads better as text than as currency
+          cell.numFmt = isYearCell(sheet.rows, r, c, raw, `${rowLabel} ${colHeader}`)
+            ? "0" // years read as 2026, never $2,026
             : pickFormat(rowLabel, colHeader, raw, n);
           cell.alignment = { horizontal: "right" };
         } else {
