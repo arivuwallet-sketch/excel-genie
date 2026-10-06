@@ -80,6 +80,21 @@ const PERIOD_RE = new RegExp(
   "i",
 );
 const TOTAL_RE = /^(?:sub)?total\b|^grand total|^total\s|^sum\b/i;
+const BARE_TOTAL_RE = /^(?:sub|grand\s)?totals?\s*(?:[:(\-–].*)?$|^sum$/i;
+
+/**
+ * "Total" / "Subtotal" rows are always aggregates. A labelled "Total payment volume" or
+ * "Total revenue" row is only treated as one when its first number equals the sum of the
+ * rows above it — otherwise it is a real KPI that happens to start with "Total".
+ */
+function isTotalRow(label: string, row: string[], body: string[][]): boolean {
+  if (BARE_TOTAL_RE.test(label.trim())) return true;
+  const c = row.findIndex((v) => numericValue(v) !== null);
+  if (c < 0 || body.length < 2) return false;
+  const value = numericValue(row[c]!)!;
+  const sum = body.reduce((t, r) => t + (numericValue(r[c] ?? "") ?? 0), 0);
+  return Math.abs(sum - value) <= Math.max(0.01, Math.abs(value) * 1e-6);
+}
 const DATE_RE = /^\d{4}-\d{1,2}-\d{1,2}(?:[T ].*)?$|^\d{1,2}\/\d{1,2}\/\d{2,4}$/;
 const PERCENT_NAME =
   /%|\b(?:rate|margin|growth|yield|share|ratio|churn|pct|percent|irr|return|roi|roe|roa|cagr|wacc|retention|conversion|utili[sz]ation|occupancy|probability|weight|change|delta|var)\b|\bvs\.?\s/i;
@@ -180,7 +195,7 @@ function buildTable(sheet: Sheet, usedNames: Set<string>): ModelTable | null {
     if (blanks > 0 && !row.some((v) => numericValue(v) !== null)) break;
     blanks = 0;
     const firstText = row.find((v) => v && numericValue(v) === null) ?? "";
-    if (TOTAL_RE.test(firstText)) continue;
+    if (TOTAL_RE.test(firstText) && isTotalRow(firstText, row, body)) continue;
     // A row that repeats the header (a second block) ends the table.
     if (row.filter((v, i) => v && v === header[i]).length >= 2) break;
     body.push(row);
