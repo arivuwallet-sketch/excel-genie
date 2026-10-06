@@ -382,7 +382,10 @@ export function formatValue(v: number | string | null | undefined, format: Field
   const abs = Math.abs(v);
   const opts: Intl.NumberFormatOptions = compact && abs >= 10000
     ? { notation: "compact", maximumFractionDigits: 1 }
-    : { maximumFractionDigits: format === "count" ? 0 : abs < 10 ? 2 : 0 };
+    : {
+        maximumFractionDigits:
+          format === "count" || Number.isInteger(v) ? 0 : compact ? 1 : abs < 10 ? 2 : 0,
+      };
   if (format === "currency")
     return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", ...opts }).format(v);
   return new Intl.NumberFormat("en-US", opts).format(v);
