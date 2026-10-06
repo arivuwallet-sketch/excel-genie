@@ -9,3 +9,6 @@
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
 - Styled .xlsx export picks number formats from the nearest row label, nearest column header and the in-app calculator's preview of each formula, so rates, money, counts and years display correctly without the AI emitting formats.
+- The Power BI workspace builds its data model in the browser from the calculated workbook (src/lib/report-model.ts): wide period layouts are unpivoted, KPI lists and statements are never summed across rows, and same-named fields act as relationships — so reports stay live with edits and need no backend.
+- Report Q&A tries the local parser (src/lib/report-qa.ts) first and only calls the AI when no field or value matches, to keep AI usage low.
+- Web search for the assistant runs as a separate research step on the gateway Responses endpoint with the built-in web_search tool (src/lib/web-research.server.ts); its cited summary is fed into the normal workbook-proposal prompt.
