@@ -62,3 +62,22 @@ test("every built-in template yields a report with data", () => {
     assert.ok(withData.length > 0, `${tpl.name} renders`);
   }
 });
+
+test("KPI rows starting with 'Total' are kept; true total rows are dropped", () => {
+  const model = buildDataModel([
+    sheet("KPIs", [
+      ["KPI", "Value"],
+      ["Total payment volume", "1000"],
+      ["Net revenue", "9"],
+      ["Fraud losses", "1"],
+    ]),
+    sheet("Sales", [
+      ["Region", "Revenue"],
+      ["West", "60"],
+      ["East", "40"],
+      ["Total revenue", "100"],
+    ]),
+  ]);
+  assert.equal(model.tables.find((t) => t.name === "KPIs").rows.length, 3);
+  assert.equal(model.tables.find((t) => t.name === "Sales").rows.length, 2);
+});
