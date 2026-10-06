@@ -1,5 +1,6 @@
 import { OPERATIONS_TEMPLATES } from "./operations.ts";
 import { INDUSTRY_TEMPLATES } from "./industry.ts";
+import { MORE_DASHBOARD_TEMPLATES } from "./industry-dashboards.ts";
 import { ADVANCED_TEMPLATES } from "./advanced.ts";
 import { BASIC_TEMPLATES } from "./basic.ts";
 import { DASHBOARD_TEMPLATES } from "./dashboards.ts";
@@ -19,6 +20,7 @@ export const ALL_TEMPLATES: FinancialTemplate[] = [
   ...INSTITUTIONAL_TEMPLATES,
   ...OPERATIONS_TEMPLATES,
   ...INDUSTRY_TEMPLATES,
+  ...MORE_DASHBOARD_TEMPLATES,
 ];
 
 export const TIERS: TemplateTier[] = [
