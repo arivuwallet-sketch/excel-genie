@@ -1,6 +1,9 @@
 import { numericValue } from "./workbook-intelligence.ts";
 import { calculateWorkbook } from "./calculation.ts";
 import { sanitizeSheetName, stripIllegalXmlChars, type Sheet } from "./spreadsheet.ts";
+import { isoDateSerial } from "./calculator/evaluate.ts";
+
+const DATE_FMT = "yyyy-mm-dd";
 
 /** Industry-standard modelling colours. */
 const INPUT_BLUE = "FF0000FF";
@@ -20,6 +23,7 @@ function formulaColor(f: string) {
 }
 
 const CURRENCY_FMT = "$#,##0;($#,##0);-";
+const CURRENCY_CENTS_FMT = "$#,##0.00;($#,##0.00);-";
 const PERCENT_FMT = "0.0%;(0.0%);-";
 const MULTIPLE_FMT = '0.00"x";(0.00"x");-';
 const RATIO_FMT = "#,##0.00;(#,##0.00);-";
@@ -30,17 +34,15 @@ const PERCENT_RE =
 const MULTIPLE_RE =
   /(multiple|moic|\bx\b|ev\/|p\/e|ebitda\/|turnover|dscr|llcr|coverage|\bbeta\b|\bratio\b|current ratio|quick ratio|magic number|leverage)/i;
 const COUNT_RE =
-  /(count|number of|#|headcount|units|qty|quantity|days|periods|employees|customers|logos|shares outstanding|iterations|orders|deals|transactions|tickets|visits|leads)/i;
+  /(\bcounts?\b|number of|#|headcount|units|qty|quantity|\bdays\b|periods|employees|customers|logos|shares outstanding|iterations|orders|deals|transactions|tickets|visits|leads|\bitems\b)/i;
 /** Explicit money units in a label beat rate words, e.g. "Freight rate ($/mt)". */
 const MONEY_UNIT_RE =
   /(\$|\busd\b|\beur\b|\bgbp\b|£|€|\(\$?k\)|\(\$?mm?\)|per unit|\/unit|\/mt|\/hr|\/hour)/i;
 
-/** Decide the number format for a cell from its row label and column header. */
-function pickFormat(rowLabel: string, colHeader: string, raw: string, value: number | null) {
-  const ctx = `${rowLabel} ${colHeader}`;
-  if (raw.includes("%")) return PERCENT_FMT;
+/** Format chosen from label text alone, or null when the text carries no signal. */
+function formatFromLabel(ctx: string, raw: string, value: number | null, currency: string) {
   const percentLabel = /%|\bpct\b|percent/i.test(ctx);
-  if (!percentLabel && MONEY_UNIT_RE.test(ctx)) return CURRENCY_FMT;
+  if (!percentLabel && MONEY_UNIT_RE.test(ctx)) return currency;
   if (PERCENT_RE.test(ctx)) {
     // A typed whole number like 8 or 12 under a rate label is not 800% — keep it a plain figure.
     // Formula results keep percent (a computed 2.5 growth really is 250%).
@@ -49,11 +51,48 @@ function pickFormat(rowLabel: string, colHeader: string, raw: string, value: num
   }
   if (MULTIPLE_RE.test(ctx)) return MULTIPLE_FMT;
   if (COUNT_RE.test(ctx)) return COUNT_FMT;
+  return null;
+}
+
+/**
+ * Decide the number format for a cell from its row label and column header.
+ * `ownLabel` is set when the row label sits in column A of a key/value row: its unit
+ * (e.g. "Threshold (days)") then outranks unrelated text above the cell (e.g. "USD").
+ */
+function pickFormat(
+  rowLabel: string,
+  colHeader: string,
+  raw: string,
+  value: number | null,
+  currency = CURRENCY_FMT,
+  ownLabel = false,
+) {
+  if (raw.includes("%")) return PERCENT_FMT;
+  if (ownLabel) {
+    const own = formatFromLabel(rowLabel, raw, value, currency);
+    if (own) return own;
+  }
+  const labelled = formatFromLabel(`${rowLabel} ${colHeader}`, raw, value, currency);
+  if (labelled) return labelled;
   // A bare fraction that is clearly not money (e.g. 0.24, 1.35) reads better as a ratio.
   if (value !== null && Math.abs(value) > 0 && Math.abs(value) < 1) return PERCENT_FMT;
   if (value !== null && !Number.isInteger(value) && Math.abs(value) < 100 && !/\$/.test(raw))
-    return RATIO_FMT;
-  return CURRENCY_FMT;
+    return currency === CURRENCY_FMT ? RATIO_FMT : currency;
+  return currency;
+}
+
+/** Transaction-level workbooks (ledgers, statements, reconciliations) are kept to the cent. */
+function usesCents(sheets: Sheet[]) {
+  let numbers = 0,
+    cents = 0;
+  for (const s of sheets)
+    for (const row of s.rows)
+      for (const v of row) {
+        if (!isNumeric(v)) continue;
+        numbers++;
+        if (/^-?\$?[\d,]+\.\d{1,2}$/.test(v.trim()) && !/\.0+$/.test(v.trim())) cents++;
+      }
+  return cents >= 5 && cents / Math.max(1, numbers) >= 0.15;
 }
 
 const isLabel = (v: string | undefined) =>
@@ -100,6 +139,8 @@ export async function buildStyledWorkbook(sheets: Sheet[]) {
     computed = null;
   }
 
+  const currency = usesCents(safeSheets) ? CURRENCY_CENTS_FMT : CURRENCY_FMT;
+
   for (const [s, sheet] of safeSheets.entries()) {
     const ws = wb.addWorksheet(sanitizeSheetName(sheet.name, usedNames), {
       views: [{ state: "frozen", ySplit: 1 }],
@@ -115,12 +156,25 @@ export async function buildStyledWorkbook(sheets: Sheet[]) {
         cell.font = { name: "Arial", size: 10 };
         const rowLabel = rowLabelFor(row, c);
         const colHeader = colHeaderFor(sheet.rows, r, c);
+        const ownLabel = c === 1 && rowLabel === row[0];
 
         if (raw.startsWith("=") && raw.slice(1).trim()) {
           cell.value = { formula: raw.slice(1) };
           cell.font = { ...cell.font, color: { argb: formulaColor(raw) } };
-          const preview = toNumber(computed?.[s]?.rows[r]?.[c] ?? "");
-          cell.numFmt = pickFormat(rowLabel, colHeader, raw, preview);
+          const shown = computed?.[s]?.rows[r]?.[c] ?? "";
+          const preview = toNumber(shown);
+          // A formula that returns a date (e.g. =Setup!B9) must display as a date, never as $46,112.
+          cell.numFmt =
+            isoDateSerial(shown) !== null
+              ? DATE_FMT
+              : pickFormat(rowLabel, colHeader, raw, preview, currency, ownLabel);
+          cell.alignment = { horizontal: "right" };
+        } else if (isoDateSerial(raw) !== null) {
+          // Real Excel dates so date arithmetic, sorting and filters work natively.
+          const [y, m, d] = raw.trim().split("-").map(Number);
+          cell.value = new Date(Date.UTC(y, m - 1, d));
+          cell.numFmt = DATE_FMT;
+          cell.font = { ...cell.font, color: { argb: INPUT_BLUE } };
           cell.alignment = { horizontal: "right" };
         } else if (isNumeric(raw)) {
           const n = toNumber(raw);
@@ -128,7 +182,7 @@ export async function buildStyledWorkbook(sheets: Sheet[]) {
           cell.font = { ...cell.font, color: { argb: INPUT_BLUE } };
           cell.numFmt = isYearCell(sheet.rows, r, c, raw, `${rowLabel} ${colHeader}`)
             ? "0" // years read as 2026, never $2,026
-            : pickFormat(rowLabel, colHeader, raw, n);
+            : pickFormat(rowLabel, colHeader, raw, n, currency, ownLabel);
           cell.alignment = { horizontal: "right" };
         } else {
           cell.value = raw;

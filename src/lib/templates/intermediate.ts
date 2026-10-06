@@ -151,87 +151,402 @@ export const INTERMEDIATE_TEMPLATES: FinancialTemplate[] = [
       return [income, bs, cf];
     },
   },
-  {
-    id: "bank-reconciliation",
-    name: "Bank Reconciliation Statement",
-    tier: "Intermediate",
-    blurb:
-      "Dual-column engine matching bank statements against the general ledger with variance flags.",
-    features: ["Auto matching", "Unmatched flags", "Reconciliation summary", "Variance check"],
-    prompt: "Match the bank and ledger sheets, flag unmatched items and explain each difference.",
-    build: () => [
+  (() => {
+    // Layout constants: every list formula covers rows 10-500 so users can paste a full month's
+    // statement or GL export below the header without editing a single formula.
+    const FIRST = 10;
+    const LAST = 500;
+    const rng = (sheet: string, col: string) => `${sheet}!$${col}$${FIRST}:$${col}$${LAST}`;
+    const BS = "'Bank Statement'";
+    const CB = "'Cash Book'";
+    const BANK_CATEGORIES = [
+      "Bank charge",
+      "Interest received",
+      "Direct credit not in GL",
+      "Direct debit not in GL",
+      "Dishonoured cheque",
+      "Bank error",
+      "Book error",
+    ];
+    const BOOK_CATEGORIES = ["Deposit in transit", "Outstanding cheque", "Book error"];
+    const sumCat = (sheet: string, cat: string) =>
+      `SUMIFS(${rng(sheet, "F")},${rng(sheet, "J")},"${cat}")`;
+    const cntCat = (sheet: string, cat: string) => `COUNTIF(${rng(sheet, "J")},"${cat}")`;
+    const matchStatus = (other: string, r: number) =>
+      `=IF(COUNTIFS(${rng(other, "B")},B${r},${rng(other, "F")},F${r})>0,"Matched",IF(COUNTIF(${rng(other, "B")},B${r})>0,"Amount mismatch","Unmatched"))`;
+
+    // Illustrative March 2026 activity for a wholesale distributor (clearly labelled sample).
+    // [date, reference, description, withdrawal, deposit, category override]
+    const bankLines: [string, string, string, number, number, string][] = [
+      ["2026-03-02", "DEP-0228", "Counter deposit lodged 28 Feb", 0, 18615.4, ""],
+      ["2026-03-03", "CHQ-10388", "Cheque 10388 presented", 12480, 0, ""],
+      ["2026-03-03", "ACH-55102", "ACH credit Harbor Foods Inc", 0, 42350, ""],
+      ["2026-03-05", "CHQ-10401", "Cheque 10401 presented", 9875.25, 0, ""],
+      ["2026-03-06", "WIR-77310", "Outgoing wire Pacific Steel Supply", 64200, 0, ""],
+      ["2026-03-09", "ACH-55117", "ACH credit Lakeside Grocers", 0, 27918.6, ""],
+      ["2026-03-13", "PAY-0313", "Payroll batch net pay", 58742.18, 0, ""],
+      ["2026-03-13", "TAX-0313", "Federal payroll tax deposit", 17436.92, 0, ""],
+      ["2026-03-16", "DEP-0316", "Branch deposit", 0, 15240, ""],
+      ["2026-03-17", "CHQ-10404", "Cheque 10404 presented", 4530, 0, ""],
+      ["2026-03-19", "ACH-55140", "ACH credit Midtown Hospitality", 0, 33605.75, ""],
+      ["2026-03-20", "CC-0320", "Merchant card settlement", 0, 11872.4, ""],
+      ["2026-03-20", "MFEE-0320", "Merchant processing fees", 356.17, 0, "Bank charge"],
+      [
+        "2026-03-24",
+        "RTN-0324",
+        "Returned item - NSF cheque Corner Deli",
+        2480,
+        0,
+        "Dishonoured cheque",
+      ],
+      ["2026-03-25", "DD-0325", "Direct debit equipment lease", 3215, 0, ""],
+      ["2026-03-27", "PAY-0327", "Payroll batch net pay", 59104.66, 0, ""],
+      ["2026-03-27", "TAX-0327", "Federal payroll tax deposit", 17598.31, 0, ""],
+      ["2026-03-30", "ACH-55188", "ACH credit Harbor Foods Inc", 0, 38940, ""],
+      ["2026-03-31", "SVC-0331", "Account analysis service charge", 145, 0, "Bank charge"],
+      ["2026-03-31", "INT-0331", "Interest credit", 0, 61.84, "Interest received"],
+      ["2026-03-31", "ACH-90011", "ACH debit - policy not held by company", 1250, 0, "Bank error"],
+    ];
+    // [date, reference, description, receipt, payment, source, category override]
+    const bookLines: [string, string, string, number, number, string, string][] = [
+      [
+        "2026-02-28",
+        "DEP-0228",
+        "Counter deposit 28 Feb (prior period)",
+        18615.4,
+        0,
+        "Prior period O/S",
+        "",
+      ],
+      [
+        "2026-02-26",
+        "CHQ-10388",
+        "Southern Tool Co (prior period)",
+        0,
+        12480,
+        "Prior period O/S",
+        "",
+      ],
+      ["2026-03-02", "ACH-55102", "Harbor Foods - INV 22841-22847", 42350, 0, "Current period", ""],
+      ["2026-03-03", "CHQ-10401", "Delta Packaging - bill 7781", 0, 9875.25, "Current period", ""],
+      ["2026-03-05", "WIR-77310", "Pacific Steel Supply - PO 4410", 0, 64200, "Current period", ""],
+      ["2026-03-09", "ACH-55117", "Lakeside Grocers - INV 22852", 27918.6, 0, "Current period", ""],
+      ["2026-03-13", "PAY-0313", "Payroll 13 Mar - net pay", 0, 58742.18, "Current period", ""],
+      ["2026-03-13", "TAX-0313", "Payroll taxes 13 Mar", 0, 17436.92, "Current period", ""],
+      ["2026-03-16", "DEP-0316", "Branch deposit", 15240, 0, "Current period", ""],
+      ["2026-03-16", "CHQ-10404", "Metro Electric - bill 0392", 0, 4350, "Current period", ""],
+      [
+        "2026-03-18",
+        "ACH-55140",
+        "Midtown Hospitality - INV 22860",
+        33605.75,
+        0,
+        "Current period",
+        "",
+      ],
+      ["2026-03-20", "CC-0320", "Card settlement 20 Mar", 11872.4, 0, "Current period", ""],
+      ["2026-03-23", "CHQ-10405", "Allied Freight - bill 5521", 0, 6812.5, "Current period", ""],
+      ["2026-03-25", "DD-0325", "Equipment lease - March", 0, 3215, "Current period", ""],
+      ["2026-03-26", "CHQ-10406", "City Water Utility - March", 0, 1148.33, "Current period", ""],
+      ["2026-03-27", "PAY-0327", "Payroll 27 Mar - net pay", 0, 59104.66, "Current period", ""],
+      ["2026-03-27", "TAX-0327", "Payroll taxes 27 Mar", 0, 17598.31, "Current period", ""],
+      ["2026-03-30", "ACH-55188", "Harbor Foods - INV 22871", 38940, 0, "Current period", ""],
+      ["2026-03-31", "DEP-0331", "Counter deposit 31 Mar", 21486.9, 0, "Current period", ""],
+      ["2026-03-31", "CHQ-10407", "Northside Realty - April rent", 0, 12500, "Current period", ""],
+    ];
+
+    const setup = () =>
+      S("Setup", [
+        ["BANK RECONCILIATION - SETUP & SIGN-OFF"],
+        [
+          "Sample figures for illustration only - replace every blue cell with your own statement, ledger and sign-off details.",
+        ],
+        ["Field", "Value", "Guidance"],
+        ["Entity", "Harborview Distribution LLC (sample)", "Legal entity that owns the account"],
+        [
+          "Bank & account",
+          "First National Bank - Operating ****4821",
+          "Mask all but the last 4 digits",
+        ],
+        [
+          "GL cash account",
+          "1010 Cash at bank - Operating",
+          "Account code and name from the chart of accounts",
+        ],
+        ["Currency", "USD", "Statement currency"],
+        ["Period start", "2026-03-01", "First day covered by the statement"],
+        ["Period end", "2026-03-31", "Statement date / reconciliation date"],
+        ["Opening balance per bank statement", 248316.72, "From the statement header"],
+        ["Closing balance per bank statement", 185507.22, "From the statement footer, as printed"],
+        ["Opening balance per GL", 254452.12, "Must equal last month's reconciled GL balance"],
+        ["Closing balance per GL trial balance", 190882.62, "From the period-end trial balance"],
+        ["Rounding tolerance ($)", 0.01, "Differences at or below this are treated as nil"],
+        ["Stale cheque threshold (days)", 180, "Cheques outstanding longer than this are flagged"],
+        [
+          "Deposit in transit alert (days)",
+          5,
+          "Deposits not credited after this many days are flagged",
+        ],
+        ["Prepared by", "", "Name of preparer"],
+        ["Prepared date", "", "YYYY-MM-DD"],
+        ["Reviewed by", "", "Name of reviewer (must differ from preparer)"],
+        ["Review date", "", "YYYY-MM-DD"],
+        [],
+        ["Bank-side categories", "Book-side categories"],
+        ...BANK_CATEGORIES.map((c, i) => [c, BOOK_CATEGORIES[i] ?? ""]),
+      ]);
+
+    const bank = () =>
       S("Bank Statement", [
-        ["BANK STATEMENT — March 2026"],
+        ["BANK STATEMENT - OPERATING ACCOUNT"],
+        ["Opening balance per statement", "=Setup!B10"],
+        ["Total deposits", `=SUM(E${FIRST}:E${LAST})`],
+        ["Total withdrawals", `=SUM(D${FIRST}:D${LAST})`],
+        ["Closing balance (computed)", "=B2+B3-B4"],
+        ["Closing balance (as printed)", "=Setup!B11"],
+        ["Statement ties to printed balance?", "=ABS(B5-B6)<=Setup!$B$14"],
         [],
-        ["Date", "Reference", "Description", "Amount", "Matched in GL?"],
-        ...[
-          ["2026-03-02", "EFT-9001", "Customer receipt Northwind", 12690],
-          ["2026-03-05", "CHQ-4410", "Supplier payment", -67300],
-          ["2026-03-11", "EFT-9002", "Customer receipt Acme", 8450],
-          ["2026-03-15", "DD-2201", "Payroll run", -47950],
-          ["2026-03-19", "FEE-0031", "Bank charges", -185],
-          ["2026-03-23", "EFT-9003", "Customer receipt Globex", 15200],
-          ["2026-03-28", "INT-0007", "Interest credit", 96],
-          ["2026-03-30", "CHQ-4415", "Rent", -8000],
-        ].map((r, i) => [
-          ...r,
-          `=IF(COUNTIF(Ledger!$B$4:$B$12,B${4 + i})>0,"MATCHED","UNMATCHED")`,
-        ]),
-        ["Total per bank", "", "", "=SUM(D4:D11)", ""],
-      ]),
-      S("Ledger", [
-        ["GENERAL LEDGER — CASH ACCOUNT"],
+        [
+          "Date",
+          "Reference",
+          "Description",
+          "Withdrawals",
+          "Deposits",
+          "Net amount",
+          "Running balance",
+          "Match status",
+          "Category override",
+          "Rec category",
+          "Flag",
+        ],
+        ...bankLines.map(([date, ref, desc, wd, dep, cat], i) => {
+          const r = FIRST + i;
+          return [
+            date,
+            ref,
+            desc,
+            wd,
+            dep,
+            `=E${r}-D${r}`,
+            i === 0 ? `=$B$2+F${r}` : `=G${r - 1}+F${r}`,
+            matchStatus(CB, r),
+            cat,
+            `=IF(H${r}="Matched","",IF(I${r}<>"",I${r},IF(H${r}="Amount mismatch","Book error",IF(F${r}<0,"Direct debit not in GL","Direct credit not in GL"))))`,
+            `=IF(OR(A${r}<Setup!$B$8,A${r}>Setup!$B$9),"Outside period",IF(COUNTIF($B$${FIRST}:$B$${LAST},B${r})>1,"Duplicate reference",IF(H${r}="Amount mismatch","Amount differs from GL","")))`,
+          ];
+        }),
+      ]);
+
+    const book = () =>
+      S("Cash Book", [
+        ["CASH BOOK - GL CASH ACCOUNT"],
+        ["Opening balance per GL", "=Setup!B12"],
+        ["Receipts this period", `=SUMIFS(D${FIRST}:D${LAST},G${FIRST}:G${LAST},"Current period")`],
+        ["Payments this period", `=SUMIFS(E${FIRST}:E${LAST},G${FIRST}:G${LAST},"Current period")`],
+        ["Closing balance (computed)", "=B2+B3-B4"],
+        ["Closing balance per trial balance", "=Setup!B13"],
+        ["Ledger ties to trial balance?", "=ABS(B5-B6)<=Setup!$B$14"],
         [],
-        ["Date", "Reference", "Description", "Amount", "Matched in bank?"],
-        ...[
-          ["2026-03-01", "EFT-9001", "Receipt Northwind", 12690],
-          ["2026-03-04", "CHQ-4410", "Supplier payment", -67300],
-          ["2026-03-10", "EFT-9002", "Receipt Acme", 8450],
-          ["2026-03-15", "DD-2201", "Payroll", -47950],
-          ["2026-03-22", "EFT-9003", "Receipt Globex", 15200],
-          ["2026-03-27", "CHQ-4414", "Unpresented cheque — supplier B", -5400],
-          ["2026-03-29", "DEP-0012", "Deposit in transit", 4300],
-          ["2026-03-30", "CHQ-4415", "Rent", -8000],
-          ["2026-03-31", "JE-0044", "Accrual reversal", -250],
-        ].map((r, i) => [
-          ...r,
-          `=IF(COUNTIF('Bank Statement'!$B$4:$B$11,B${4 + i})>0,"MATCHED","UNMATCHED")`,
-        ]),
-        ["Total per ledger", "", "", "=SUM(D4:D12)", ""],
-      ]),
+        [
+          "Date",
+          "Reference",
+          "Description",
+          "Receipts",
+          "Payments",
+          "Net amount",
+          "Source",
+          "Match status",
+          "Category override",
+          "Rec category",
+          "Days outstanding",
+          "Flag",
+        ],
+        ...bookLines.map(([date, ref, desc, rec, pay, src, cat], i) => {
+          const r = FIRST + i;
+          return [
+            date,
+            ref,
+            desc,
+            rec,
+            pay,
+            `=D${r}-E${r}`,
+            src,
+            matchStatus(BS, r),
+            cat,
+            `=IF(H${r}="Matched","",IF(I${r}<>"",I${r},IF(H${r}="Amount mismatch","Book error",IF(F${r}>0,"Deposit in transit","Outstanding cheque"))))`,
+            `=IF(H${r}="Matched",0,MAX(0,Setup!$B$9-A${r}))`,
+            `=IF(AND(G${r}="Current period",OR(A${r}<Setup!$B$8,A${r}>Setup!$B$9)),"Outside period",IF(H${r}="Matched",IF(G${r}="Prior period O/S","Cleared from prior period",""),IF(AND(J${r}="Outstanding cheque",K${r}>Setup!$B$15),"Stale cheque - review",IF(AND(J${r}="Deposit in transit",K${r}>Setup!$B$16),"Late deposit - investigate",IF(H${r}="Amount mismatch","Amount differs from bank",IF(G${r}="Prior period O/S","Still outstanding from prior period",""))))))`,
+          ];
+        }),
+      ]);
+
+    const rec = () =>
       S("Reconciliation", [
         ["BANK RECONCILIATION STATEMENT"],
+        ["Entity", "=Setup!B4"],
+        ["Account", "=Setup!B5"],
+        ["As at", "=Setup!B9"],
         [],
-        ["Balance per bank statement", "='Bank Statement'!D12"],
+        ["Bank side", "Amount", "Items"],
+        ["Balance per bank statement", `=${BS}!B5`, ""],
         [
           "Add: deposits in transit",
-          '=SUMIFS(Ledger!$D$4:$D$12,Ledger!$E$4:$E$12,"UNMATCHED",Ledger!$D$4:$D$12,">0")',
+          `=${sumCat(CB, "Deposit in transit")}`,
+          `=${cntCat(CB, "Deposit in transit")}`,
         ],
         [
-          "Less: unpresented cheques",
-          '=SUMIFS(Ledger!$D$4:$D$12,Ledger!$E$4:$E$12,"UNMATCHED",Ledger!$D$4:$D$12,"<0")',
-        ],
-        ["Adjusted bank balance", "=B3+B4+B5"],
-        [],
-        ["Balance per general ledger", "=Ledger!D13"],
-        [
-          "Add: bank charges not recorded",
-          "=-SUMIFS('Bank Statement'!$D$4:$D$11,'Bank Statement'!$E$4:$E$11,\"UNMATCHED\",'Bank Statement'!$D$4:$D$11,\"<0\")",
+          "Less: outstanding cheques",
+          `=${sumCat(CB, "Outstanding cheque")}`,
+          `=${cntCat(CB, "Outstanding cheque")}`,
         ],
         [
-          "Less: interest not recorded",
-          "=-SUMIFS('Bank Statement'!$D$4:$D$11,'Bank Statement'!$E$4:$E$11,\"UNMATCHED\",'Bank Statement'!$D$4:$D$11,\">0\")",
+          "Add/(less): bank errors to be reversed by bank",
+          `=-${sumCat(BS, "Bank error")}`,
+          `=${cntCat(BS, "Bank error")}`,
         ],
-        ["Adjusted ledger balance", "=B8-B9-B10"],
+        ["Adjusted bank balance", "=SUM(B7:B10)", "=SUM(C8:C10)"],
         [],
-        ["VARIANCE (must be 0)", "=ROUND(B6-B11,2)"],
-        ["Status", '=IF(ABS(B13)<0.01,"RECONCILED","INVESTIGATE")'],
+        ["Book side", "Amount", "Items"],
+        ["Balance per general ledger", `=${CB}!B5`, ""],
+        [
+          "Add: interest received not recorded",
+          `=${sumCat(BS, "Interest received")}`,
+          `=${cntCat(BS, "Interest received")}`,
+        ],
+        [
+          "Add: direct credits not recorded",
+          `=${sumCat(BS, "Direct credit not in GL")}`,
+          `=${cntCat(BS, "Direct credit not in GL")}`,
+        ],
+        [
+          "Less: bank charges not recorded",
+          `=${sumCat(BS, "Bank charge")}`,
+          `=${cntCat(BS, "Bank charge")}`,
+        ],
+        [
+          "Less: direct debits not recorded",
+          `=${sumCat(BS, "Direct debit not in GL")}`,
+          `=${cntCat(BS, "Direct debit not in GL")}`,
+        ],
+        [
+          "Less: dishonoured cheques",
+          `=${sumCat(BS, "Dishonoured cheque")}`,
+          `=${cntCat(BS, "Dishonoured cheque")}`,
+        ],
+        [
+          "Add/(less): book errors",
+          `=${sumCat(BS, "Book error")}-${sumCat(CB, "Book error")}`,
+          `=${cntCat(BS, "Book error")}+${cntCat(CB, "Book error")}`,
+        ],
+        ["Adjusted book balance", "=SUM(B14:B20)", "=SUM(C15:C20)"],
         [],
-        ["Unmatched bank items", "=COUNTIF('Bank Statement'!$E$4:$E$11,\"UNMATCHED\")"],
-        ["Unmatched ledger items", '=COUNTIF(Ledger!$E$4:$E$12,"UNMATCHED")'],
-      ]),
-    ],
-  },
+        ["Unreconciled difference", "=ROUND(B11-B21,2)"],
+        ["Status", '=IF(ABS(B23)<=Setup!B14,"RECONCILED","UNRECONCILED - INVESTIGATE")'],
+        [
+          "Review status",
+          '=IF(AND(Setup!B17<>"",Setup!B19<>""),IF(Setup!B17=Setup!B19,"Preparer and reviewer must differ","Signed off"),"Awaiting preparer and reviewer sign-off")',
+        ],
+        [],
+        ["Prepared by", '=IF(Setup!B17="","",Setup!B17)', '=IF(Setup!B18="","",Setup!B18)'],
+        ["Reviewed by", '=IF(Setup!B19="","",Setup!B19)', '=IF(Setup!B20="","",Setup!B20)'],
+      ]);
+
+    // Book-side items need journals so the GL agrees to the adjusted balance next month.
+    const R = "Reconciliation";
+    const aje: [string, string, string, string][] = [
+      ["AJE-1", "Interest received", "7010 Interest income", `${R}!B15`],
+      ["AJE-2", "Direct credits not recorded", "2190 Unidentified receipts (suspense)", `${R}!B16`],
+      ["AJE-3", "Bank charges", "6810 Bank service charges", `${R}!B17`],
+      ["AJE-4", "Direct debits not recorded", "2195 Unidentified payments (suspense)", `${R}!B18`],
+      ["AJE-5", "Dishonoured cheques", "1200 Accounts receivable", `${R}!B19`],
+      ["AJE-6", "Book error correction", "2000 Accounts payable", `${R}!B20`],
+    ];
+    const journals = () =>
+      S("Adjusting Entries", [
+        ["PROPOSED ADJUSTING JOURNAL ENTRIES - BOOK SIDE"],
+        [
+          "Post these in the GL so next month's opening balance agrees to the adjusted book balance.",
+        ],
+        ["Entry", "Purpose", "Account", "Debit", "Credit"],
+        ...aje.flatMap(([id, purpose, account, cell], i) => {
+          const r = 4 + i * 2;
+          return [
+            [id, purpose, account, `=MAX(0,-${cell})`, `=MAX(0,${cell})`],
+            [id, purpose, "=Setup!B6", `=E${r}`, `=D${r}`],
+          ];
+        }),
+        [],
+        ["Total debits", "", "", "=SUM(D4:D15)"],
+        ["Total credits", "", "", "=SUM(E4:E15)"],
+        [
+          "Net change to GL cash",
+          "",
+          "",
+          `=SUMIFS(D4:D15,C4:C15,Setup!B6)-SUMIFS(E4:E15,C4:C15,Setup!B6)`,
+        ],
+        ["GL cash after entries", "", "", `=${CB}!B5+D19`],
+      ]);
+
+    const unmatched = (sheet: string) =>
+      `COUNTIF(${rng(sheet, "H")},"Unmatched")+COUNTIF(${rng(sheet, "H")},"Amount mismatch")`;
+    const checks = () =>
+      S("Checks", [
+        ["CONTROL CHECKS"],
+        [],
+        ["Check", "Pass?"],
+        ["Bank statement lines tie to the printed closing balance", `=${BS}!B7`],
+        ["Cash book ties to the trial balance", `=${CB}!B7`],
+        [
+          "Opening GL = opening bank + prior-period outstanding items",
+          `=ABS(Setup!B12-(Setup!B10+SUMIFS(${rng(CB, "F")},${rng(CB, "G")},"Prior period O/S")))<=Setup!B14`,
+        ],
+        ["Reconciliation difference within tolerance", `=ABS(${R}!B23)<=Setup!B14`],
+        [
+          "Every unmatched bank line has a valid category",
+          `=${unmatched(BS)}=${BANK_CATEGORIES.map((c) => cntCat(BS, c)).join("+")}`,
+        ],
+        [
+          "Every unmatched ledger line has a valid category",
+          `=${unmatched(CB)}=${BOOK_CATEGORIES.map((c) => cntCat(CB, c)).join("+")}`,
+        ],
+        ["No stale outstanding cheques", `=COUNTIF(${rng(CB, "L")},"Stale cheque - review")=0`],
+        ["No late deposits in transit", `=COUNTIF(${rng(CB, "L")},"Late deposit - investigate")=0`],
+        ["No duplicate bank references", `=COUNTIF(${rng(BS, "K")},"Duplicate reference")=0`],
+        [
+          "No transactions dated outside the period",
+          `=COUNTIF(${rng(BS, "K")},"Outside period")+COUNTIF(${rng(CB, "L")},"Outside period")=0`,
+        ],
+        [
+          "Adjusting entries balance (debits = credits)",
+          "=ABS('Adjusting Entries'!D17-'Adjusting Entries'!D18)<0.005",
+        ],
+        [
+          "Adjusting entries bring GL to the adjusted book balance",
+          `=ABS('Adjusting Entries'!D20-${R}!B21)<=Setup!B14`,
+        ],
+        [],
+        ["MASTER CHECK", "=AND(B4:B15)"],
+      ]);
+
+    return {
+      id: "bank-reconciliation",
+      name: "Bank Reconciliation Statement",
+      tier: "Intermediate",
+      blurb:
+        "Month-end bank-to-ledger reconciliation: reference + amount matching, deposits in transit, outstanding cheques, bank and book errors, aging flags, adjusting journals and 12 control checks.",
+      features: [
+        "Reference + amount matching",
+        "Prior-period items roll forward",
+        "Bank vs book error handling",
+        "Stale cheque & late deposit flags",
+        "Adjusting journal entries",
+        "Preparer / reviewer sign-off",
+      ],
+      prompt:
+        "Paste my bank statement and GL cash export into this reconciliation, match every line, categorise anything unmatched and explain each reconciling item.",
+      build: () => [setup(), bank(), book(), rec(), journals(), checks()],
+    } satisfies FinancialTemplate;
+  })(),
   {
     id: "ar-ap-aging",
     name: "A/R & A/P Aging with DSO / DPO",

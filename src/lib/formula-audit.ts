@@ -104,14 +104,18 @@ const isBlankRange = (sheet: Sheet, r: Ref) => {
   return true;
 };
 
+/** Rows past the data that mark a range as deliberate paste-in capacity (e.g. D10:D500). */
+const HEADROOM_ROWS = 50;
 const rangeOutOfBounds = (sheet: Sheet, r: Ref) => {
   const height = sheet.rows.length;
   const width = sheet.rows.reduce((max, row) => Math.max(max, row.length), 0);
+  // An off-by-a-few end row is a slip; a range running far past the data is intentional headroom.
+  const endPastData = r.end.row >= height && r.end.row - height < HEADROOM_ROWS;
   return (
     r.start.row < 0 ||
     r.start.col < 0 ||
     r.start.row >= height ||
-    r.end.row >= height ||
+    endPastData ||
     r.start.col >= width ||
     r.end.col >= width
   );
