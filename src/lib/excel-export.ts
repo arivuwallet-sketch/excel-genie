@@ -32,7 +32,8 @@ const MULTIPLE_RE =
 const COUNT_RE =
   /(count|number of|#|headcount|units|qty|quantity|days|periods|employees|customers|logos|shares outstanding|iterations|orders|deals|transactions|tickets|visits|leads)/i;
 /** Explicit money units in a label beat rate words, e.g. "Freight rate ($/mt)". */
-const MONEY_UNIT_RE = /(\$|usd|eur|gbp|£|€|\(\$?k\)|\(\$?mm?\)|per unit|\/unit|\/mt|\/hr|\/hour)/i;
+const MONEY_UNIT_RE =
+  /(\$|\busd\b|\beur\b|\bgbp\b|£|€|\(\$?k\)|\(\$?mm?\)|per unit|\/unit|\/mt|\/hr|\/hour)/i;
 
 /** Decide the number format for a cell from its row label and column header. */
 function pickFormat(rowLabel: string, colHeader: string, raw: string, value: number | null) {
