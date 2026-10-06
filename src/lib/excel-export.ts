@@ -171,8 +171,8 @@ export async function buildStyledWorkbook(sheets: Sheet[]) {
           cell.alignment = { horizontal: "right" };
         } else if (isoDateSerial(raw) !== null) {
           // Real Excel dates so date arithmetic, sorting and filters work natively.
-          const [y, m, d] = raw.trim().split("-").map(Number);
-          cell.value = new Date(Date.UTC(y, m - 1, d));
+          // Serial 25569 is 1970-01-01 in Excel's 1900 date system.
+          cell.value = new Date((isoDateSerial(raw)! - 25569) * 86_400_000);
           cell.numFmt = DATE_FMT;
           cell.font = { ...cell.font, color: { argb: INPUT_BLUE } };
           cell.alignment = { horizontal: "right" };
