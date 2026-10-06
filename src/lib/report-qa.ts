@@ -153,6 +153,14 @@ export function parseQuestion(question: string, model: DataModel, preferTable?: 
     category: category && finalType !== "card" ? category.id : null,
     values,
     topN,
-    sort: ["line", "area"].includes(finalType) && !topN ? "label" : sort,
+    sort:
+      !topN &&
+      (["line", "area"].includes(finalType) ||
+        (category &&
+          (category.kind === "date" ||
+            /period|month|year|quarter|week/i.test(category.name) ||
+            table.shape !== "list")))
+        ? "label"
+        : sort,
   });
 }

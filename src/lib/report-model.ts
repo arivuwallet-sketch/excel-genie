@@ -92,7 +92,7 @@ const DATE_RE = /^\d{4}-\d{1,2}-\d{1,2}(?:[T ].*)?$|^\d{1,2}\/\d{1,2}\/\d{2,4}$/
 const PERCENT_NAME =
   /%|\b(?:rate|margin|growth|yield|share|ratio|churn|pct|percent|irr|return|roi|roe|roa|cagr|wacc|retention|conversion|utili[sz]ation|occupancy|probability|weight|change|delta|var)\b|\bvs\.?\s/i;
 const MONEY_NAME =
-  /\$|£|€|\b(?:revenue|sales|cost|costs|price|amount|profit|income|expense|expenses|cash|balance|budget|spend|ebitda|ebit|salary|pay|fee|fees|arr|mrr|ltv|cac|capex|opex|debt|equity|asset|assets|liabilit\w*|value|valuation|gmv|payment|invoice|total|net|gross|margin \$|usd|eur|gbp)\b/i;
+  /\$|£|€|\b(?:revenue|sales|cost|costs|price|amount|profit|income|expense|expenses|cash|balance|budget|spend|ebitda|ebit|salary|pay|fee|fees|arr|mrr|ltv|cac|capex|opex|debt|equity|asset|assets|liabilit\w*|value|valuation|gmv|payment|invoice|total|net|gross|margin \$|usd|eur|gbp|deal size|aov|arpu|arpa|acv|tcv|basket|ticket|wage|rent|loan|principal|interest|dividend|nav|ffo|affo|noi)\b/i;
 
 function isPeriodHeader(v: string) {
   const t = v.trim();
@@ -402,7 +402,9 @@ export function runVisual(visual: Visual, model: DataModel, filters: Filters): Q
     return row;
   });
   const timeLike =
-    cat.kind === "date" || /period|month|year|date|quarter|week/i.test(cat.name) || table.unpivoted;
+    cat.kind === "date" ||
+    /period|month|year|date|quarter|week/i.test(cat.name) ||
+    table.shape !== "list";
   const sort = visual.sort === "label" || (timeLike && visual.sort !== "value-asc" && ["line", "area"].includes(visual.type)) ? "label" : visual.sort;
   if (sort === "label") {
     if (cat.kind === "date") out.sort((a, b) => Date.parse(a.label) - Date.parse(b.label));
