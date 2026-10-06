@@ -119,7 +119,7 @@ export function ReportVisual({
   const k0 = result?.keys[0] ?? "v0";
   const shape = model.tables.find((t) => t.name === visual.table)?.shape ?? "list";
   // KPI lists and statements mix units per row: format each row from its own label.
-  const cellFormat = (label: string, k: string, v: unknown): import("@/lib/report-model").FieldFormat =>
+  const cellFormat = (label: string, k: string, v: unknown): FieldFormat =>
     shape !== "list" && k === k0 && !visual.format && typeof v === "number"
       ? labelFormat(label, [v])
       : (formats[k] ?? "number");

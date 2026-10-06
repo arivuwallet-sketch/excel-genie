@@ -1,5 +1,6 @@
 import {
   defaultAgg,
+  labelFormat,
   makeVisual,
   type Agg,
   type DataModel,
@@ -29,7 +30,10 @@ function mentions(q: string, field: Field) {
 export function parseQuestion(question: string, model: DataModel, preferTable?: string): Visual | null {
   const q = norm(question);
   if (!q) return null;
-  let best: { table: ModelTable; hits: { f: Field; at: number }[] } | null = null;
+  type ValueHit = { f: Field; value: string };
+  let best: { table: ModelTable; hits: { f: Field; at: number }[]; values: ValueHit[] } | null =
+    null;
+  let bestScore = 0;
   const ordered = [...model.tables].sort((a, b) =>
     a.name === preferTable ? -1 : b.name === preferTable ? 1 : 0,
   );
@@ -38,17 +42,44 @@ export function parseQuestion(question: string, model: DataModel, preferTable?: 
       .map((f) => ({ f, at: mentions(q, f) }))
       .filter((h) => h.at >= 0)
       .sort((a, b) => b.f.name.length - a.f.name.length);
-    // also allow the table name itself to select the table
+    // Values named in the question ("revenue" in a statement, "West" in a Region column).
+    const values: ValueHit[] = [];
+    for (const f of table.fields) {
+      if (f.kind === "number" || f.distinct > 300) continue;
+      const seen = new Set<string>();
+      for (const r of table.rows) {
+        const raw = r[f.col];
+        if (typeof raw !== "string" || seen.has(raw)) continue;
+        seen.add(raw);
+        const n = norm(raw);
+        if (n.length >= 3 && ` ${q} `.includes(` ${n} `) && !hits.some((h) => norm(h.f.name) === n))
+          values.push({ f, value: raw });
+      }
+    }
     const tableHit = ` ${q} `.includes(` ${norm(table.name)} `) ? 0.5 : 0;
-    if (hits.length + tableHit > (best ? best.hits.length : 0)) best = { table, hits };
+    const score = hits.length + values.length * 0.9 + tableHit;
+    if (score > bestScore) {
+      bestScore = score;
+      best = { table, hits, values };
+    }
   }
-  if (!best || best.hits.length === 0) return null;
+  if (!best || (best.hits.length === 0 && best.values.length === 0)) return null;
   const { table } = best;
   // de-duplicate overlapping matches (keep longest names)
   const hits = best.hits.filter(
     (h, i, all) => !all.some((o, j) => j < i && norm(o.f.name).includes(norm(h.f.name))),
   );
+  const valueHits = best.values.filter(
+    (v, i, all) => !all.some((o, j) => j !== i && o.f === v.f && norm(o.value).includes(norm(v.value)) && o.value.length > v.value.length),
+  );
+  const pinMap = new Map<string, string[]>();
+  for (const v of valueHits) pinMap.set(v.f.id, [...(pinMap.get(v.f.id) ?? []), v.value]);
+  const pins = [...pinMap.entries()].map(([field, values]) => ({ field, values }));
   const measures = hits.filter((h) => h.f.kind === "number").sort((a, b) => a.at - b.at);
+  if (measures.length === 0 && table.shape === "matrix") {
+    const valueField = table.fields[table.fields.length - 1]!;
+    measures.push({ f: valueField, at: 0 });
+  }
   const cats = hits.filter((h) => h.f.kind !== "number").sort((a, b) => a.at - b.at);
 
   let agg: Agg | null = null;
@@ -75,7 +106,9 @@ export function parseQuestion(question: string, model: DataModel, preferTable?: 
   const topN = topMatch ? Number(topMatch[2]) : null;
   const sort = topMatch?.[1] === "bottom" ? "value-asc" : "value-desc";
 
-  let category: Field | undefined = cats[0]?.f;
+  let category: Field | undefined = cats.find((c) => !pinMap.has(c.f.id))?.f ?? cats[0]?.f;
+  if (!category && table.shape === "matrix" && !/\b(total|card|kpi)\b/.test(q))
+    category = table.fields[1]; // Period
   if (!category && time)
     category = table.fields.find(
       (f) => f.kind === "date" || /period|month|year|date|quarter|week/i.test(f.name),
@@ -100,8 +133,12 @@ export function parseQuestion(question: string, model: DataModel, preferTable?: 
         : category.distinct > 12
           ? "bar"
           : "column");
+  const pinnedLine = table.shape !== "list" ? valueHits[0]?.value : undefined;
   return makeVisual({
     table: table.name,
+    pins,
+    format: pinnedLine && valueHits.length === 1 ? labelFormat(pinnedLine, []) : null,
+    title: pinnedLine ? `${valueHits.map((v) => v.value).join(", ")}${category ? ` by ${category.name}` : ""}` : "",
     type: category ? finalType : "card",
     category: category && finalType !== "card" ? category.id : null,
     values,
