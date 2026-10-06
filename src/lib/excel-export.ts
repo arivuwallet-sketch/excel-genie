@@ -26,7 +26,7 @@ const RATIO_FMT = "#,##0.00;(#,##0.00);-";
 const COUNT_FMT = "#,##0;(#,##0);-";
 
 const PERCENT_RE =
-  /(%|\bpct\b|percent|(?<!run-)\brate\b|rates\b|margin|growth|retention|churn|yield|irr|wacc|cagr|cost of (equity|debt|capital)|tax rate|discount rate|utili[sz]ation|occupancy|allocation|weight|share of|contribution|payout|escalat|inflation|attrition|conversion|uplift|premium %|spread|win rate|hit rate|variance %|yoy|mom\b|qoq|change %|% change|mix\b|penetration|completion)/i;
+  /(%|\bpct\b|percent|(?<!run-)\brate\b|rates\b|margin|growth|retention|churn|yield|irr|wacc|cagr|cost of (equity|debt|capital)|tax rate|discount rate|utili[sz]ation|occupancy|allocation|weight|share of|contribution|payout|escalat|inflation|attrition|conversion|uplift|premium %|spread|win rate|hit rate|variance %|yoy|mom\b|qoq|change %|% change|mix\b|penetration|completion|vs\.? (prior|previous|last|budget|target|plan))/i;
 const MULTIPLE_RE =
   /(multiple|moic|\bx\b|ev\/|p\/e|ebitda\/|turnover|dscr|llcr|coverage|\bbeta\b|\bratio\b|current ratio|quick ratio|magic number|leverage)/i;
 const COUNT_RE =
@@ -41,8 +41,9 @@ function pickFormat(rowLabel: string, colHeader: string, raw: string, value: num
   const percentLabel = /%|\bpct\b|percent/i.test(ctx);
   if (!percentLabel && MONEY_UNIT_RE.test(ctx)) return CURRENCY_FMT;
   if (PERCENT_RE.test(ctx)) {
-    // A whole number like 8 or 12 under a rate label is not 800% — keep it a plain figure.
-    if (value !== null && Math.abs(value) >= 2) return RATIO_FMT;
+    // A typed whole number like 8 or 12 under a rate label is not 800% — keep it a plain figure.
+    // Formula results keep percent (a computed 2.5 growth really is 250%).
+    if (!raw.startsWith("=") && value !== null && Math.abs(value) >= 2) return RATIO_FMT;
     return PERCENT_FMT;
   }
   if (MULTIPLE_RE.test(ctx)) return MULTIPLE_FMT;
