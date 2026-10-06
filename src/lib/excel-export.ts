@@ -26,13 +26,14 @@ const RATIO_FMT = "#,##0.00;(#,##0.00);-";
 const COUNT_FMT = "#,##0;(#,##0);-";
 
 const PERCENT_RE =
-  /(%|\bpct\b|percent|(?<!run-)\brate\b|rates\b|margin|growth|retention|churn|yield|irr|wacc|cagr|cost of (equity|debt|capital)|tax rate|discount rate|utili[sz]ation|occupancy|allocation|weight|share of|contribution|payout|escalat|inflation|attrition|conversion|uplift|premium %|spread|win rate|hit rate|variance %|yoy|mom\b|qoq|change %|% change|mix\b|penetration|completion)/i;
+  /(%|\bpct\b|percent|(?<!run-)\brate\b|rates\b|margin|growth|retention|churn|yield|irr|wacc|cagr|cost of (equity|debt|capital)|tax rate|discount rate|utili[sz]ation|occupancy|allocation|weight|share of|contribution|payout|escalat|inflation|attrition|conversion|uplift|premium %|spread|win rate|hit rate|variance %|yoy|mom\b|qoq|change %|% change|mix\b|penetration|completion|vs\.? (prior|previous|last|budget|target|plan))/i;
 const MULTIPLE_RE =
   /(multiple|moic|\bx\b|ev\/|p\/e|ebitda\/|turnover|dscr|llcr|coverage|\bbeta\b|\bratio\b|current ratio|quick ratio|magic number|leverage)/i;
 const COUNT_RE =
   /(count|number of|#|headcount|units|qty|quantity|days|periods|employees|customers|logos|shares outstanding|iterations|orders|deals|transactions|tickets|visits|leads)/i;
 /** Explicit money units in a label beat rate words, e.g. "Freight rate ($/mt)". */
-const MONEY_UNIT_RE = /(\$|usd|eur|gbp|£|€|\(\$?k\)|\(\$?mm?\)|per unit|\/unit|\/mt|\/hr|\/hour)/i;
+const MONEY_UNIT_RE =
+  /(\$|\busd\b|\beur\b|\bgbp\b|£|€|\(\$?k\)|\(\$?mm?\)|per unit|\/unit|\/mt|\/hr|\/hour)/i;
 
 /** Decide the number format for a cell from its row label and column header. */
 function pickFormat(rowLabel: string, colHeader: string, raw: string, value: number | null) {
@@ -41,8 +42,9 @@ function pickFormat(rowLabel: string, colHeader: string, raw: string, value: num
   const percentLabel = /%|\bpct\b|percent/i.test(ctx);
   if (!percentLabel && MONEY_UNIT_RE.test(ctx)) return CURRENCY_FMT;
   if (PERCENT_RE.test(ctx)) {
-    // A whole number like 8 or 12 under a rate label is not 800% — keep it a plain figure.
-    if (value !== null && Math.abs(value) >= 2) return RATIO_FMT;
+    // A typed whole number like 8 or 12 under a rate label is not 800% — keep it a plain figure.
+    // Formula results keep percent (a computed 2.5 growth really is 250%).
+    if (!raw.startsWith("=") && value !== null && Math.abs(value) >= 2) return RATIO_FMT;
     return PERCENT_FMT;
   }
   if (MULTIPLE_RE.test(ctx)) return MULTIPLE_FMT;
@@ -67,6 +69,16 @@ function rowLabelFor(row: string[], c: number) {
 function colHeaderFor(rows: string[][], r: number, c: number) {
   for (let i = r - 1; i >= 0 && i >= r - 40; i--) if (isLabel(rows[i]?.[c])) return rows[i]![c]!;
   return "";
+}
+
+const YEAR_RE = /^(19|20)\d{2}$/;
+/** A 4-digit value is a year only in a year context — not an amount like 9600 in a ledger. */
+function isYearCell(rows: string[][], r: number, c: number, raw: string, ctx: string) {
+  if (!YEAR_RE.test(raw.trim())) return false;
+  if (/\b(year|yr|fy|vintage|cohort|period)\b/i.test(ctx)) return true;
+  // Timeline header rows: every number in the row is a year.
+  const nums = (rows[r] ?? []).filter((v) => isNumeric(v));
+  return nums.length >= 2 && nums.every((v) => YEAR_RE.test(v.trim()));
 }
 
 /** Build the styled, formula-driven workbook. Pure — no browser APIs — so it's directly testable. */
@@ -114,8 +126,8 @@ export async function buildStyledWorkbook(sheets: Sheet[]) {
           const n = toNumber(raw);
           cell.value = n ?? raw;
           cell.font = { ...cell.font, color: { argb: INPUT_BLUE } };
-          cell.numFmt = /^\d{4}$/.test(raw.trim())
-            ? "@" // a bare 4-digit number (e.g. a year) reads better as text than as currency
+          cell.numFmt = isYearCell(sheet.rows, r, c, raw, `${rowLabel} ${colHeader}`)
+            ? "0" // years read as 2026, never $2,026
             : pickFormat(rowLabel, colHeader, raw, n);
           cell.alignment = { horizontal: "right" };
         } else {
